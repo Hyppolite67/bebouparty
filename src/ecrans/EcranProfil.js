@@ -1,0 +1,78 @@
+// src/ecrans/EcranProfil.js
+import React, { useState } from 'react';
+import { View, Text, TextInput, ScrollView, StyleSheet, Alert } from 'react-native';
+import FondDegrade from '../composants/FondDegrade';
+import CarteGlass from '../composants/CarteGlass';
+import Mascotte from '../composants/Mascotte';
+import SelecteurMascotte from '../composants/SelecteurMascotte';
+import BoutonPrincipal from '../composants/BoutonPrincipal';
+import { useJoueur } from '../etat/ContexteJoueur';
+import * as Reseau from '../reseau/ClientReseau';
+import { COULEURS } from '../theme/couleurs';
+import { POLICES } from '../theme/styles';
+
+export default function EcranProfil({ route, navigation }) {
+  const intention = route.params?.intention || 'creer';
+  const { pseudo, setPseudo, mascotte, setMascotte, adresseServeur, sauverProfil, profil } = useJoueur();
+  const [code, setCode] = useState('');
+  const [enCours, setEnCours] = useState(false);
+
+  const valider = async () => {
+    if (!pseudo.trim()) { Alert.alert('Oups', "Choisis d'abord un surnom !"); return; }
+    if (intention === 'rejoindre' && !code.trim()) { Alert.alert('Oups', 'Entre le code de la salle.'); return; }
+    setEnCours(true);
+    await sauverProfil();
+    try {
+      await Reseau.connecter(adresseServeur);
+    } catch {
+      setEnCours(false);
+      Alert.alert('Connexion impossible', "Vérifie l'adresse du serveur et le WiFi.");
+      return;
+    }
+    if (intention === 'creer') {
+      const off = Reseau.sur('salleCreee', ({ code }) => {
+        off();
+        navigation.replace('SalleAttente', { estHote: true, code });
+      });
+      Reseau.creerSalle(profil);
+    } else {
+      // On écoute une éventuelle erreur "salle introuvable"
+      const offErr = Reseau.sur('erreur', (e) => { offErr(); setEnCours(false); Alert.alert('Erreur', e.message); });
+      Reseau.rejoindreSalle(code.trim().toUpperCase(), profil);
+      navigation.replace('SalleAttente', { estHote: false, code: code.trim().toUpperCase() });
+    }
+  };
+
+  return (
+    <FondDegrade>
+      <ScrollView contentContainerStyle={{ paddingVertical: 10, gap: 14 }} showsVerticalScrollIndicator={false}>
+        <Text style={styles.titre}>Qui es-tu ?</Text>
+        <View style={{ alignItems: 'center' }}><Mascotte config={mascotte} taille={150} /></View>
+
+        <CarteGlass style={{ padding: 12 }}>
+          <TextInput value={pseudo} onChangeText={setPseudo} placeholder="Ton surnom..."
+            placeholderTextColor="rgba(255,255,255,0.5)" style={styles.input} />
+        </CarteGlass>
+
+        <SelecteurMascotte config={mascotte} onChange={setMascotte} />
+
+        {intention === 'rejoindre' && (
+          <CarteGlass style={{ padding: 12 }}>
+            <Text style={styles.label}>Code de la salle</Text>
+            <TextInput value={code} onChangeText={setCode} placeholder="BEBOU-0000" autoCapitalize="characters"
+              placeholderTextColor="rgba(255,255,255,0.5)" style={styles.input} />
+          </CarteGlass>
+        )}
+
+        <BoutonPrincipal titre={enCours ? 'Connexion...' : "C'est parti !"} icone="🎉"
+          couleur={COULEURS.violet} onPress={valider} desactive={enCours} />
+      </ScrollView>
+    </FondDegrade>
+  );
+}
+
+const styles = StyleSheet.create({
+  titre: { fontFamily: POLICES.titre, fontSize: 30, color: COULEURS.jaune, textAlign: 'center' },
+  label: { fontFamily: POLICES.texte, fontSize: 12, color: COULEURS.jaune, marginBottom: 4 },
+  input: { fontFamily: POLICES.texteGras, fontSize: 18, color: COULEURS.blanc, paddingVertical: 6 },
+});
