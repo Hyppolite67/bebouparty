@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { Text, StyleSheet, FlatList } from 'react-native';
 import FondDegrade from '../composants/FondDegrade';
 import CarteMiniJeu from '../composants/CarteMiniJeu';
+import BandeauErreur from '../composants/BandeauErreur';
 import * as Reseau from '../reseau/ClientReseau';
 import { COULEURS } from '../theme/couleurs';
 import { POLICES } from '../theme/styles';
@@ -22,6 +23,8 @@ export default function EcranSelectionJeu({ navigation }) {
 
   return (
     <FondDegrade>
+      {/* Bandeau de déconnexion — en position absolue, se superpose au contenu */}
+      <BandeauErreur onReessayer={() => navigation.replace('Accueil')} />
       <Text style={styles.titre}>Quel jeu on joue ?</Text>
       <FlatList data={JEUX} keyExtractor={(j) => j.id} numColumns={2}
         columnWrapperStyle={{ gap: 12 }} contentContainerStyle={{ gap: 12, paddingVertical: 10 }}

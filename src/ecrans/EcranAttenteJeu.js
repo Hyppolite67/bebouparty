@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { Text, StyleSheet, View } from 'react-native';
 import FondDegrade from '../composants/FondDegrade';
 import Mascotte from '../composants/Mascotte';
+import BandeauErreur from '../composants/BandeauErreur';
 import * as Reseau from '../reseau/ClientReseau';
 import { useJoueur } from '../etat/ContexteJoueur';
 import { COULEURS } from '../theme/couleurs';
@@ -16,6 +17,8 @@ export default function EcranAttenteJeu({ navigation }) {
   }, []);
   return (
     <FondDegrade>
+      {/* Bandeau de déconnexion — en position absolue, se superpose au contenu */}
+      <BandeauErreur onReessayer={() => navigation.replace('Accueil')} />
       <View style={styles.c}>
         <Mascotte config={mascotte} taille={160} />
         <Text style={styles.txt}>L'hôte choisit le jeu...</Text>

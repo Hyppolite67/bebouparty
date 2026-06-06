@@ -5,6 +5,7 @@ import FondDegrade from '../composants/FondDegrade';
 import CarteGlass from '../composants/CarteGlass';
 import CarteJoueur from '../composants/CarteJoueur';
 import BoutonPrincipal from '../composants/BoutonPrincipal';
+import BandeauErreur from '../composants/BandeauErreur';
 import * as Reseau from '../reseau/ClientReseau';
 import { COULEURS } from '../theme/couleurs';
 import { POLICES } from '../theme/styles';
@@ -27,6 +28,8 @@ export default function EcranSalleAttente({ route, navigation }) {
 
   return (
     <FondDegrade>
+      {/* Bandeau de déconnexion — en position absolue, se superpose au contenu */}
+      <BandeauErreur onReessayer={() => navigation.replace('Accueil')} />
       <View style={{ flex: 1, paddingTop: 10 }}>
         {estHote ? (
           <CarteGlass style={styles.codeBox}>
