@@ -1,6 +1,6 @@
 // src/ecrans/EcranAttenteJeu.js
 import React, { useEffect } from 'react';
-import { Text, StyleSheet, View } from 'react-native';
+import { Text, StyleSheet, View, Alert } from 'react-native';
 import FondDegrade from '../composants/FondDegrade';
 import Mascotte from '../composants/Mascotte';
 import BandeauErreur from '../composants/BandeauErreur';
@@ -12,8 +12,13 @@ import { POLICES } from '../theme/styles';
 export default function EcranAttenteJeu({ navigation }) {
   const { mascotte } = useJoueur();
   useEffect(() => {
-    const off = Reseau.sur('jeuChoisi', () => navigation.replace('JeuDessin'));
-    return off;
+    const off1 = Reseau.sur('jeuChoisi', () => navigation.replace('JeuDessin'));
+    // Si l'hôte quitte avant de choisir, on ne reste pas bloqué ici.
+    const off2 = Reseau.sur('erreur', (e) => {
+      Alert.alert('Partie terminée', e?.message || 'L\'hôte a quitté la partie.');
+      navigation.replace('Accueil');
+    });
+    return () => { off1(); off2(); };
   }, []);
   return (
     <FondDegrade>

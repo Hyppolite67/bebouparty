@@ -1,6 +1,6 @@
 // src/ecrans/EcranSelectionJeu.js
 import React, { useEffect } from 'react';
-import { Text, StyleSheet, FlatList } from 'react-native';
+import { Text, StyleSheet, FlatList, Alert } from 'react-native';
 import FondDegrade from '../composants/FondDegrade';
 import CarteMiniJeu from '../composants/CarteMiniJeu';
 import BandeauErreur from '../composants/BandeauErreur';
@@ -15,8 +15,13 @@ const JEUX = [
 
 export default function EcranSelectionJeu({ navigation }) {
   useEffect(() => {
-    const off = Reseau.sur('jeuChoisi', () => navigation.replace('JeuDessin'));
-    return off;
+    const off1 = Reseau.sur('jeuChoisi', () => navigation.replace('JeuDessin'));
+    // Si quelque chose ferme la salle, on revient à l'accueil avec un message.
+    const off2 = Reseau.sur('erreur', (e) => {
+      Alert.alert('Partie terminée', e?.message || 'La salle a été fermée.');
+      navigation.replace('Accueil');
+    });
+    return () => { off1(); off2(); };
   }, []);
 
   const choisir = (jeu) => { Reseau.choisirJeu(jeu.id); /* le serveur renverra JEU_CHOISI à tous */ };

@@ -1,6 +1,6 @@
 // src/ecrans/EcranSalleAttente.js
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Alert } from 'react-native';
 import FondDegrade from '../composants/FondDegrade';
 import CarteGlass from '../composants/CarteGlass';
 import CarteJoueur from '../composants/CarteJoueur';
@@ -19,9 +19,15 @@ export default function EcranSalleAttente({ route, navigation }) {
     const off2 = Reseau.sur('partieLancee', () => {
       navigation.replace(estHote ? 'SelectionJeu' : 'AttenteJeu');
     });
-    const off3 = Reseau.sur('erreur', () => navigation.replace('Accueil'));
-    const off4 = Reseau.sur('deconnecte', () => navigation.replace('Accueil'));
-    return () => { off1(); off2(); off3(); off4(); };
+    // Si l'hôte ferme la salle, le serveur envoie une "erreur" avec un message :
+    // on l'affiche clairement avant de revenir à l'accueil.
+    const off3 = Reseau.sur('erreur', (e) => {
+      Alert.alert('Partie terminée', e?.message || 'La salle a été fermée.');
+      navigation.replace('Accueil');
+    });
+    // En cas de perte de connexion, on NE redirige PAS d'office : le BandeauErreur
+    // s'affiche avec un bouton "Réessayer" (cohérent avec les autres écrans).
+    return () => { off1(); off2(); off3(); };
   }, []);
 
   const assezDeJoueurs = joueurs.length >= 2;

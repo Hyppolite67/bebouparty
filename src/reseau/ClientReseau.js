@@ -10,7 +10,15 @@ import { construire, parser } from './protocole';
 let socket = null;
 const abonnes = {}; // evenement -> [callbacks]
 
+// On mémorise la DERNIÈRE liste de joueurs reçue. Pourquoi ? Le serveur envoie
+// la liste juste après qu'on crée/rejoint une salle, c'est-à-dire pendant qu'on
+// change d'écran. L'écran "Salle d'attente" peut donc ne pas encore être abonné
+// au moment où la liste arrive. En la rejouant aux nouveaux abonnés, on évite
+// que la liste de joueurs reste vide (condition de course).
+let derniereListeJoueurs = null;
+
 function emettre(evenement, donnees) {
+  if (evenement === 'listeJoueurs') derniereListeJoueurs = donnees;
   (abonnes[evenement] || []).forEach((cb) => cb(donnees));
 }
 
@@ -18,11 +26,16 @@ function emettre(evenement, donnees) {
 export function sur(evenement, callback) {
   if (!abonnes[evenement]) abonnes[evenement] = [];
   abonnes[evenement].push(callback);
+  // On rejoue tout de suite la dernière liste connue au nouvel abonné, pour
+  // qu'il ne rate pas une liste arrivée pendant la transition d'écran.
+  if (evenement === 'listeJoueurs' && derniereListeJoueurs !== null) callback(derniereListeJoueurs);
   return () => { abonnes[evenement] = abonnes[evenement].filter((c) => c !== callback); };
 }
 
 // adresse = "192.168.1.20:8080"
 export function connecter(adresse) {
+  // Nouvelle session : on oublie la liste de joueurs d'une éventuelle partie précédente.
+  derniereListeJoueurs = null;
   return new Promise((resolve, reject) => {
     try {
       socket = new WebSocket(`ws://${adresse}`);
@@ -54,4 +67,4 @@ export function creerSalle(profil) { envoyer('CREER_SALLE', { profil }); }
 export function rejoindreSalle(code, profil) { envoyer('REJOINDRE_SALLE', { code, profil }); }
 export function lancerPartie() { envoyer('LANCER_PARTIE'); }
 export function choisirJeu(idJeu) { envoyer('CHOISIR_JEU', { idJeu }); }
-export function quitter() { if (socket) socket.close(); socket = null; }
+export function quitter() { if (socket) socket.close(); socket = null; derniereListeJoueurs = null; }
