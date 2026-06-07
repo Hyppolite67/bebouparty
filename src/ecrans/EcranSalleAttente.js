@@ -30,7 +30,10 @@ export default function EcranSalleAttente({ route, navigation }) {
     return () => { off1(); off2(); off3(); };
   }, []);
 
-  const assezDeJoueurs = joueurs.length >= 2;
+  // Minimum de joueurs pour lancer. Mis à 1 pour permettre de tester l'app en solo.
+  // (Pour de vraies parties, 2+ joueurs sont évidemment recommandés.)
+  const MIN_JOUEURS = 1;
+  const assezDeJoueurs = joueurs.length >= MIN_JOUEURS;
 
   return (
     <FondDegrade>
@@ -57,7 +60,7 @@ export default function EcranSalleAttente({ route, navigation }) {
           <BoutonPrincipal titre="Lancer la partie" icone="🚀" couleur={COULEURS.violet}
             desactive={!assezDeJoueurs} onPress={() => Reseau.lancerPartie()} />
         )}
-        {estHote && !assezDeJoueurs && <Text style={styles.info}>Il faut au moins 2 joueurs</Text>}
+        {estHote && !assezDeJoueurs && <Text style={styles.info}>En attente d'au moins {MIN_JOUEURS} joueur…</Text>}
       </View>
     </FondDegrade>
   );
