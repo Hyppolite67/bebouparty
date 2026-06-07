@@ -1,10 +1,23 @@
 // serveur/serveur.js
-// Serveur WebSocket à lancer sur le PC : node serveur/serveur.js
+// Serveur WebSocket de BebouParty.
+// - En local : node serveur/serveur.js  (écoute le port 8080)
+// - En ligne (Render, Railway...) : l'hébergeur impose le port via process.env.PORT
+const http = require('http');
 const { WebSocketServer } = require('ws');
 const { GestionnaireSalles } = require('./salles');
 
-const PORT = 8080;
-const wss = new WebSocketServer({ port: PORT });
+// L'hébergeur cloud fournit le port à utiliser ; sinon on prend 8080 en local.
+const PORT = process.env.PORT || 8080;
+
+// Petit serveur HTTP : il sert une page "santé" (pour que l'hébergeur voie que
+// le service répond) ET il porte le serveur WebSocket sur le même port.
+const serveurHttp = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('BebouParty serveur OK');
+});
+
+// On attache le WebSocket au serveur HTTP (au lieu d'ouvrir un port à part).
+const wss = new WebSocketServer({ server: serveurHttp });
 const gestion = new GestionnaireSalles();
 
 // On donne un identifiant à chaque connexion
@@ -63,4 +76,7 @@ wss.on('connection', (ws) => {
   });
 });
 
-console.log(`Serveur BebouParty démarré sur le port ${PORT}`);
+// On écoute sur 0.0.0.0 pour accepter les connexions extérieures (téléphones / cloud).
+serveurHttp.listen(PORT, '0.0.0.0', () => {
+  console.log(`Serveur BebouParty démarré sur le port ${PORT}`);
+});

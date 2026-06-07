@@ -1,0 +1,13 @@
+{
+  "name": "bebouparty-serveur",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Serveur WebSocket de BebouParty (déployable sur Render/Railway).",
+  "main": "serveur.js",
+  "scripts": {
+    "start": "node serveur.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  }
+}

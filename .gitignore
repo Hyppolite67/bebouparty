@@ -42,3 +42,6 @@ yarn-error.*
 
 # Maquettes de brainstorming
 .superpowers/
+
+# Dépendances du serveur déployable
+serveur/node_modules/

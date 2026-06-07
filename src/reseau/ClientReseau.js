@@ -32,13 +32,27 @@ export function sur(evenement, callback) {
   return () => { abonnes[evenement] = abonnes[evenement].filter((c) => c !== callback); };
 }
 
-// adresse = "192.168.1.20:8080"
+// Transforme ce que l'utilisateur saisit en URL WebSocket valide.
+// Accepte plusieurs formes pratiques :
+//   - "192.168.1.20:8080"            (PC local)        -> ws://192.168.1.20:8080
+//   - "bebouparty.onrender.com"      (cloud, domaine)  -> wss://bebouparty.onrender.com
+//   - "https://bebouparty.onrender.com" (collé du navigateur) -> wss://bebouparty.onrender.com
+//   - "ws://..." ou "wss://..."      (déjà complet)    -> inchangé
+export function construireUrl(adresse) {
+  const a = (adresse || '').trim().replace(/\/+$/, ''); // enlève les / de fin
+  if (/^wss?:\/\//i.test(a)) return a;                  // déjà ws:// ou wss://
+  if (/^https?:\/\//i.test(a)) return a.replace(/^http/i, 'ws'); // http->ws, https->wss
+  if (a.includes(':')) return `ws://${a}`;              // contient un port -> local (ws)
+  return `wss://${a}`;                                   // domaine seul -> cloud sécurisé (wss)
+}
+
+// adresse = "192.168.1.20:8080" (local) ou "bebouparty.onrender.com" (cloud)
 export function connecter(adresse) {
   // Nouvelle session : on oublie la liste de joueurs d'une éventuelle partie précédente.
   derniereListeJoueurs = null;
   return new Promise((resolve, reject) => {
     try {
-      socket = new WebSocket(`ws://${adresse}`);
+      socket = new WebSocket(construireUrl(adresse));
     } catch (e) { reject(e); return; }
 
     socket.onopen = () => resolve();
