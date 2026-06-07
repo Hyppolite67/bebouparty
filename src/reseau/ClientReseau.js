@@ -68,6 +68,22 @@ export function connecter(adresse) {
         case 'PARTIE_LANCEE': emettre('partieLancee'); break;
         case 'JEU_CHOISI': emettre('jeuChoisi', msg.idJeu); break;
         case 'ERREUR': emettre('erreur', msg); break;
+        // Événements du jeu « Devine le dessin »
+        case 'CHOIX_MOTS': emettre('choixMots', msg.mots); break;
+        case 'PREPARATION': emettre('preparation', msg); break;
+        case 'TOUR_DEMARRE': emettre('tourDemarre', msg); break;
+        case 'TRAIT_DEBUT': emettre('traitDebut', msg); break;
+        case 'TRAIT_POINTS': emettre('traitPoints', msg); break;
+        case 'TRAIT_FIN': emettre('traitFin', msg); break;
+        case 'ANNULER': emettre('annuler'); break;
+        case 'EFFACER_TOUT': emettre('effacerTout'); break;
+        case 'FOND': emettre('fond', msg.couleur); break;
+        case 'A_TROUVE': emettre('aTrouve', msg); break;
+        case 'PRESQUE': emettre('presque', msg); break;
+        case 'MESSAGE_CHAT': emettre('messageChat', msg); break;
+        case 'SCORES': emettre('scores', msg.scores); break;
+        case 'TOUR_FINI': emettre('tourFini', msg); break;
+        case 'PARTIE_FINIE': emettre('partieFinie', msg.classement); break;
       }
     };
   });
@@ -80,5 +96,16 @@ function envoyer(type, donnees) {
 export function creerSalle(profil) { envoyer('CREER_SALLE', { profil }); }
 export function rejoindreSalle(code, profil) { envoyer('REJOINDRE_SALLE', { code, profil }); }
 export function lancerPartie() { envoyer('LANCER_PARTIE'); }
-export function choisirJeu(idJeu) { envoyer('CHOISIR_JEU', { idJeu }); }
+// reglages : { manches, duree } — transmis au serveur pour configurer la partie
+export function choisirJeu(idJeu, reglages) { envoyer('CHOISIR_JEU', { idJeu, reglages }); }
 export function quitter() { if (socket) socket.close(); socket = null; derniereListeJoueurs = null; }
+
+// Fonctions de jeu « Devine le dessin »
+export function choisirMot(mot) { envoyer('CHOISIR_MOT', { mot }); }
+export function traitDebut(t) { envoyer('TRAIT_DEBUT', t); }           // t = {id, couleur, taille}
+export function traitPoints(id, points) { envoyer('TRAIT_POINTS', { id, points }); }
+export function traitFin(id) { envoyer('TRAIT_FIN', { id }); }
+export function annulerTrait() { envoyer('ANNULER'); }
+export function effacerTout() { envoyer('EFFACER_TOUT'); }
+export function changerFond(couleur) { envoyer('FOND', { couleur }); }
+export function deviner(texte) { envoyer('DEVINER', { texte }); }
