@@ -8,6 +8,7 @@ import EcranSalleAttente from '../ecrans/EcranSalleAttente';
 import EcranSelectionJeu from '../ecrans/EcranSelectionJeu';
 import EcranAttenteJeu from '../ecrans/EcranAttenteJeu';
 import EcranJeuDessin from '../ecrans/EcranJeuDessin';
+import EcranReglagesPartie from '../ecrans/ReglagesPartie';
 
 const Pile = createNativeStackNavigator();
 
@@ -20,6 +21,7 @@ export default function Navigation() {
         <Pile.Screen name="SalleAttente" component={EcranSalleAttente} />
         <Pile.Screen name="SelectionJeu" component={EcranSelectionJeu} />
         <Pile.Screen name="AttenteJeu" component={EcranAttenteJeu} />
+        <Pile.Screen name="ReglagesPartie" component={EcranReglagesPartie} />
         <Pile.Screen name="JeuDessin" component={EcranJeuDessin} />
       </Pile.Navigator>
     </NavigationContainer>
