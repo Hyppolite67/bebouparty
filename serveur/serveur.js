@@ -5,6 +5,7 @@
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const { GestionnaireSalles } = require('./salles');
+const { Partie } = require('./partie');
 
 // L'hébergeur cloud fournit le port à utiliser ; sinon on prend 8080 en local.
 const PORT = process.env.PORT || 8080;
@@ -19,6 +20,9 @@ const serveurHttp = http.createServer((req, res) => {
 // On attache le WebSocket au serveur HTTP (au lieu d'ouvrir un port à part).
 const wss = new WebSocketServer({ server: serveurHttp });
 const gestion = new GestionnaireSalles();
+
+// Table des parties en cours : code -> { partie, minuteur, debut, duree }
+const parties = {};
 
 // On donne un identifiant à chaque connexion
 let prochainId = 1;
@@ -38,6 +42,75 @@ function diffuserListe(code) {
   diffuser(code, 'LISTE_JOUEURS', { joueurs: gestion.listeJoueurs(code) });
 }
 
+// Retrouve le ws d'un joueur par son idSocket et lui envoie un message
+function envoyerA(idSocket, type, donnees = {}) {
+  for (const ws of wss.clients) {
+    if (ws.idSocket === idSocket) { envoyer(ws, type, donnees); return; }
+  }
+}
+
+// Relaie un message de dessin à tous les joueurs de la salle SAUF l'émetteur
+function relayerAuxAutres(wsEmetteur, code, type, donnees = {}) {
+  for (const ws of wss.clients) {
+    if (ws.codeSalle === code && ws !== wsEmetteur) envoyer(ws, type, donnees);
+  }
+}
+
+// Temps restant dans le tour en cours (en secondes)
+function tempsRestant(code) {
+  const slot = parties[code];
+  if (!slot || !slot.debut) return 0;
+  return Math.max(0, slot.duree - (Date.now() - slot.debut) / 1000);
+}
+
+// Retrouve le pseudo d'un joueur par son idSocket dans la salle
+function pseudoDe(code, idSocket) {
+  const joueurs = gestion.listeJoueurs(code);
+  const joueur = joueurs.find((j) => j.id === idSocket);
+  return joueur ? joueur.pseudo : '?';
+}
+
+// ── Gestion du déroulement de la partie ──────────────────────────────────────
+
+// Démarre le tour suivant et annonce les rôles
+function demarrerTourEtAnnoncer(code) {
+  const slot = parties[code];
+  if (!slot) return;
+  const tour = slot.partie.demarrerTour();
+  if (!tour) { return finirPartie(code); } // plus de manche → podium
+  // Envoyer les 3 mots AU dessinateur uniquement
+  envoyerA(tour.dessinateurId, 'CHOIX_MOTS', { mots: tour.mots });
+  // Prévenir tout le monde qui va dessiner (sans révéler le mot)
+  diffuser(code, 'PREPARATION', { dessinateurId: tour.dessinateurId });
+}
+
+// Termine le tour en cours (timeout ou tous ont trouvé ou dessinateur parti)
+function finirTour(code) {
+  const slot = parties[code];
+  if (!slot) return;
+  clearTimeout(slot.minuteur);
+  slot.minuteur = null;
+  const { mot, scores } = slot.partie.finTour();
+  diffuser(code, 'TOUR_FINI', { mot, scores });
+  // Petite pause de révélation, puis tour suivant (ou podium si partie finie)
+  if (slot.partie.estFinie()) {
+    slot.minuteur = setTimeout(() => finirPartie(code), 5000);
+  } else {
+    slot.minuteur = setTimeout(() => demarrerTourEtAnnoncer(code), 5000);
+  }
+}
+
+// Termine la partie et diffuse le podium
+function finirPartie(code) {
+  const slot = parties[code];
+  if (!slot) return;
+  clearTimeout(slot.minuteur);
+  diffuser(code, 'PARTIE_FINIE', { classement: slot.partie.classement() });
+  delete parties[code];
+}
+
+// ── Gestion des connexions WebSocket ─────────────────────────────────────────
+
 wss.on('connection', (ws) => {
   ws.idSocket = 'S' + prochainId++;
   console.log('Connexion', ws.idSocket);
@@ -46,11 +119,13 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
 
+    const code = ws.codeSalle;
+
     if (msg.type === 'CREER_SALLE') {
-      const { code } = gestion.creerSalle(ws.idSocket, msg.profil);
-      ws.codeSalle = code;
-      envoyer(ws, 'SALLE_CREEE', { code });
-      diffuserListe(code);
+      const { code: nouveauCode } = gestion.creerSalle(ws.idSocket, msg.profil);
+      ws.codeSalle = nouveauCode;
+      envoyer(ws, 'SALLE_CREEE', { code: nouveauCode });
+      diffuserListe(nouveauCode);
     }
 
     else if (msg.type === 'REJOINDRE_SALLE') {
@@ -61,15 +136,83 @@ wss.on('connection', (ws) => {
     }
 
     else if (msg.type === 'LANCER_PARTIE') {
-      if (gestion.estHote(ws.idSocket)) diffuser(ws.codeSalle, 'PARTIE_LANCEE');
+      if (gestion.estHote(ws.idSocket)) diffuser(code, 'PARTIE_LANCEE');
     }
 
+    // L'hôte choisit le jeu et ses réglages → créer la partie, naviguer, puis démarrer le 1er tour
     else if (msg.type === 'CHOISIR_JEU') {
-      if (gestion.estHote(ws.idSocket)) diffuser(ws.codeSalle, 'JEU_CHOISI', { idJeu: msg.idJeu });
+      if (!gestion.estHote(ws.idSocket)) return;
+      const reglages = msg.reglages || { manches: 2, duree: 80 };
+      const joueurs = gestion.listeJoueurs(code);
+      parties[code] = {
+        partie: new Partie(joueurs, reglages),
+        minuteur: null,
+        debut: null,
+        duree: reglages.duree,
+      };
+      // Faire naviguer toute la salle vers l'écran de jeu
+      diffuser(code, 'JEU_CHOISI', { idJeu: msg.idJeu });
+      // Lancer le 1er tour (choix du mot pour le dessinateur)
+      demarrerTourEtAnnoncer(code);
+    }
+
+    // Le dessinateur choisit son mot → lancer le chrono et informer tout le monde
+    else if (msg.type === 'CHOISIR_MOT') {
+      const slot = parties[code];
+      if (!slot) return;
+      const { partie } = slot;
+      // Seul le dessinateur courant peut choisir le mot
+      if (ws.idSocket !== partie.dessinateurId) return;
+      const { nbLettres, duree } = partie.choisirMot(msg.mot);
+      slot.debut = Date.now();
+      slot.duree = duree;
+      diffuser(code, 'TOUR_DEMARRE', { dessinateurId: partie.dessinateurId, nbLettres, duree });
+      // Démarrer le chrono : fin automatique si le temps s'écoule
+      slot.minuteur = setTimeout(() => finirTour(code), duree * 1000);
+    }
+
+    // Messages de dessin : relayer uniquement depuis le dessinateur courant vers les autres
+    else if (['TRAIT_DEBUT', 'TRAIT_POINTS', 'TRAIT_FIN', 'ANNULER', 'EFFACER_TOUT', 'FOND'].includes(msg.type)) {
+      const slot = parties[code];
+      if (!slot) return;
+      if (ws.idSocket !== slot.partie.dessinateurId) return;
+      // Relayer le message tel quel (en repassant toutes les propriétés sauf "type")
+      const { type, ...donnees } = msg;
+      relayerAuxAutres(ws, code, type, donnees);
+    }
+
+    // Un devineur envoie une réponse
+    else if (msg.type === 'DEVINER') {
+      const slot = parties[code];
+      if (!slot) return;
+      const { partie } = slot;
+      const r = partie.deviner(ws.idSocket, msg.texte, tempsRestant(code));
+      if (r.resultat === 'exact') {
+        const pseudo = pseudoDe(code, ws.idSocket);
+        diffuser(code, 'A_TROUVE', { joueurId: ws.idSocket, pseudo });
+        diffuser(code, 'SCORES', {
+          joueurs: partie.classement().map(({ id, pseudo: p, points }) => ({ id, pseudo: p, points })),
+        });
+        if (partie.tousOntTrouve()) finirTour(code);
+      } else if (r.resultat === 'proche') {
+        const pseudo = pseudoDe(code, ws.idSocket);
+        envoyer(ws, 'PRESQUE', { pseudo });
+      } else if (r.resultat === 'faux') {
+        const pseudo = pseudoDe(code, ws.idSocket);
+        diffuser(code, 'MESSAGE_CHAT', { pseudo, texte: msg.texte });
+      }
+      // 'interdit', 'deja', 'inactif' → ignorer silencieusement
     }
   });
 
   ws.on('close', () => {
+    const codeSalle = ws.codeSalle;
+    // Gérer la déconnexion dans la partie en cours avant de retirer le joueur de la salle
+    if (codeSalle && parties[codeSalle]) {
+      const { partie } = parties[codeSalle];
+      const r = partie.joueurParti(ws.idSocket);
+      if (r.tourTermine) finirTour(codeSalle);
+    }
     const r = gestion.retirer(ws.idSocket);
     if (r && !r.ferme) diffuserListe(r.code);
     if (r && r.ferme) diffuser(r.code, 'ERREUR', { code: 'SALLE_FERMEE', message: 'L\'hôte a quitté la partie' });
