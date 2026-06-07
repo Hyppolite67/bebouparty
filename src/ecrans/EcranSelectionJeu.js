@@ -24,7 +24,9 @@ export default function EcranSelectionJeu({ navigation }) {
     return () => { off1(); off2(); };
   }, []);
 
-  const choisir = (jeu) => { Reseau.choisirJeu(jeu.id); /* le serveur renverra JEU_CHOISI à tous */ };
+  // Pour la carte active, l'hôte est redirigé vers l'écran de réglages.
+  // Les joueurs non-hôtes seront redirigés vers JeuDessin par l'abonnement jeuChoisi ci-dessus.
+  const choisir = (jeu) => { navigation.navigate('ReglagesPartie'); };
 
   return (
     <FondDegrade>
