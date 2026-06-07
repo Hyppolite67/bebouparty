@@ -10,6 +10,11 @@ import { construire, parser } from './protocole';
 let socket = null;
 const abonnes = {}; // evenement -> [callbacks]
 
+// Mon identifiant de joueur, attribué par le serveur à la connexion.
+// Sert à savoir « est-ce moi le dessinateur ? » et à me reconnaître dans les scores.
+let _monId = null;
+export function monId() { return _monId; }
+
 // On mémorise la DERNIÈRE liste de joueurs reçue. Pourquoi ? Le serveur envoie
 // la liste juste après qu'on crée/rejoint une salle, c'est-à-dire pendant qu'on
 // change d'écran. L'écran "Salle d'attente" peut donc ne pas encore être abonné
@@ -48,8 +53,9 @@ export function construireUrl(adresse) {
 
 // adresse = "192.168.1.20:8080" (local) ou "bebouparty.onrender.com" (cloud)
 export function connecter(adresse) {
-  // Nouvelle session : on oublie la liste de joueurs d'une éventuelle partie précédente.
+  // Nouvelle session : on oublie la liste de joueurs et l'identifiant précédents.
   derniereListeJoueurs = null;
+  _monId = null;
   return new Promise((resolve, reject) => {
     try {
       socket = new WebSocket(construireUrl(adresse));
@@ -63,6 +69,7 @@ export function connecter(adresse) {
       if (!msg) return;
       // On traduit chaque message serveur en événement clair pour les écrans
       switch (msg.type) {
+        case 'MON_ID': _monId = msg.id; emettre('monId', msg.id); break;
         case 'SALLE_CREEE': emettre('salleCreee', msg); break;
         case 'LISTE_JOUEURS': emettre('listeJoueurs', msg.joueurs); break;
         case 'PARTIE_LANCEE': emettre('partieLancee'); break;

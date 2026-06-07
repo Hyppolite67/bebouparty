@@ -114,6 +114,8 @@ function finirPartie(code) {
 wss.on('connection', (ws) => {
   ws.idSocket = 'S' + prochainId++;
   console.log('Connexion', ws.idSocket);
+  // On informe tout de suite le client de son propre identifiant.
+  envoyer(ws, 'MON_ID', { id: ws.idSocket });
 
   ws.on('message', (data) => {
     let msg;
