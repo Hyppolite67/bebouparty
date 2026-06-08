@@ -39,6 +39,11 @@ export default function Canvas({
 
   const pan = Gesture.Pan()
     .enabled(!!interactif)
+    // IMPORTANT : avec Reanimated installé, les callbacks du geste tournent par
+    // défaut sur le thread UI (worklets). Or on y appelle des fonctions JS
+    // (setState, envoi réseau) → crash. runOnJS(true) force les callbacks sur le
+    // thread JS, où ces appels sont valides.
+    .runOnJS(true)
     .onBegin((e) => {
       const id = String(Date.now());
       traitEnCours.current = id;
