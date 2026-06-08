@@ -1,20 +1,18 @@
 // src/composants/jeu/Canvas.js
-// Composant de dessin : capture tactile (dessinateur) et rendu des traits (tous).
-// Les coordonnées sont normalisées 0-1 pour être indépendantes de la taille d'écran.
+// Zone de dessin : capture tactile (dessinateur) + rendu des traits (tous).
 //
-// Optimisations clés :
-//  - Le trait EN COURS est géré dans l'état local du Canvas (et pas dans l'écran
-//    parent) : seul le Canvas se rafraîchit pendant qu'on dessine → fluide.
-//  - Les traits TERMINÉS sont rendus dans un sous-composant mémoïsé (ils ne se
-//    recalculent pas à chaque point du trait en cours).
-//  - La couleur / la taille courantes sont lues via des refs TOUJOURS à jour,
-//    pour éviter que le geste ne fige la couleur choisie au démarrage.
-import React, { useRef, useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+// On utilise PanResponder (système tactile natif de React Native) plutôt que
+// gesture-handler : c'est simple, fiable, tourne sur le thread JS, et il n'y a
+// aucun piège de "worklet" ni de seuil d'activation.
+//
+// Coordonnées normalisées 0-1 (indépendantes de la taille d'écran).
+// Le trait EN COURS est dans l'état local du Canvas (affichage fluide) ; les
+// traits TERMINÉS sont rendus dans un sous-composant mémoïsé.
+import React, { useRef, useState, useMemo } from 'react';
+import { View, StyleSheet, PanResponder } from 'react-native';
+import Svg, { Path, Rect, Circle } from 'react-native-svg';
 
-// Convertit une liste de points normalisés [x,y] en attribut "d" d'un Path SVG.
+// Liste de points normalisés → attribut "d" d'un Path SVG (à l'échelle du canvas).
 function versChemin(points, w, h) {
   if (!points || !points.length) return '';
   return points
@@ -22,32 +20,21 @@ function versChemin(points, w, h) {
     .join(' ');
 }
 
-// Rendu mémoïsé des traits terminés : ne se recalcule que si la liste (ou la
-// taille du canvas) change réellement — pas à chaque point du trait en cours.
+// Rendu mémoïsé des traits terminés (ne se recalcule pas à chaque point du trait en cours).
 const TraitsTermines = React.memo(function TraitsTermines({ traits, w, h }) {
-  return traits.map((t) => (
-    <Path
-      key={t.id}
-      d={versChemin(t.points, w, h)}
-      stroke={t.couleur}
-      strokeWidth={t.taille}
-      fill="none"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  ));
+  return traits.map((t) => {
+    // Un trait d'un seul point = un rond (sinon un Path "M x y" seul ne s'affiche pas)
+    if (t.points && t.points.length === 1) {
+      const [x, y] = t.points[0];
+      return <Circle key={t.id} cx={x * w} cy={y * h} r={Math.max(1, t.taille / 2)} fill={t.couleur} />;
+    }
+    return (
+      <Path key={t.id} d={versChemin(t.points, w, h)} stroke={t.couleur} strokeWidth={t.taille}
+        fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    );
+  });
 });
 
-// Props :
-//   traits       : [{ id, couleur, taille, points:[[x,y]...] }] traits TERMINÉS (0-1)
-//   fond         : couleur de fond (string CSS)
-//   interactif   : si true, capture le geste de dessin (dessinateur uniquement)
-//   couleur      : couleur du trait en cours
-//   taille       : épaisseur du trait en cours (pixels écran)
-//   onTraitDebut(meta)        : début d'un trait { id, couleur, taille }
-//   onTraitPoints(id, points) : lot de points throttlé (~50 ms) — pour le réseau
-//   onTraitFin(id)            : fin du geste
-//   onTraitTermine(trait)     : trait complet à ajouter aux traits terminés (parent)
 export default function Canvas({
   traits,
   fond = '#ffffff',
@@ -60,77 +47,85 @@ export default function Canvas({
   onTraitTermine,
 }) {
   const [dim, setDim] = useState({ w: 1, h: 1 });
-  const [actif, setActif] = useState(null); // trait en cours { id, couleur, taille, points }
+  const [actif, setActif] = useState(null); // trait en cours
 
-  // Refs toujours à jour (lues dans le geste pour ne JAMAIS figer la couleur/taille)
-  const couleurRef = useRef(couleur);
-  const tailleRef = useRef(taille);
-  const interactifRef = useRef(interactif);
-  const dimRef = useRef(dim);
-  useEffect(() => { couleurRef.current = couleur; }, [couleur]);
-  useEffect(() => { tailleRef.current = taille; }, [taille]);
-  useEffect(() => { interactifRef.current = interactif; }, [interactif]);
-  useEffect(() => { dimRef.current = dim; }, [dim]);
+  // Une seule ref qui contient TOUJOURS les valeurs courantes (lues dans PanResponder).
+  const vals = useRef({});
+  vals.current.interactif = interactif;
+  vals.current.couleur = couleur;
+  vals.current.taille = taille;
+  vals.current.dim = dim;
+  vals.current.onTraitDebut = onTraitDebut;
+  vals.current.onTraitPoints = onTraitPoints;
+  vals.current.onTraitFin = onTraitFin;
+  vals.current.onTraitTermine = onTraitTermine;
 
-  // Le geste est créé UNE seule fois ; il lit les refs pour les valeurs courantes.
-  const panRef = useRef(null);
-  if (!panRef.current) {
-    let bufferReseau = []; // points pas encore envoyés au réseau
-    let idCourant = null;
-    let dernierEnvoi = 0;
+  // État interne du trait en cours (hors React pour le buffer réseau).
+  const trace = useRef({ id: null, buffer: [], dernier: 0 });
 
-    const versNorm = (x, y) => {
-      const { w, h } = dimRef.current;
-      return [Math.min(1, Math.max(0, x / w)), Math.min(1, Math.max(0, y / h))];
-    };
+  const norm = (x, y) => {
+    const { w, h } = vals.current.dim;
+    return [Math.min(1, Math.max(0, x / w)), Math.min(1, Math.max(0, y / h))];
+  };
 
-    panRef.current = Gesture.Pan()
-      // runOnJS : les callbacks tournent sur le thread JS (on y appelle setState + réseau)
-      .runOnJS(true)
-      .onBegin((e) => {
-        if (!interactifRef.current) return; // seuls les dessinateurs dessinent
-        const id = String(Date.now()) + Math.random().toString(16).slice(2, 6);
-        idCourant = id;
-        const c = couleurRef.current;
-        const t = tailleRef.current;
-        const p0 = versNorm(e.x, e.y);
-        setActif({ id, couleur: c, taille: t, points: [p0] });
-        onTraitDebut && onTraitDebut({ id, couleur: c, taille: t });
-        bufferReseau = [p0];
-        dernierEnvoi = Date.now();
-      })
-      .onUpdate((e) => {
-        if (!idCourant) return;
-        const p = versNorm(e.x, e.y);
-        // Affichage local fluide : on ajoute le point au trait en cours
-        setActif((prev) => (prev ? { ...prev, points: [...prev.points, p] } : prev));
-        // Réseau : on bufférise et on envoie par lots toutes les ~50 ms
-        bufferReseau.push(p);
-        const now = Date.now();
-        if (now - dernierEnvoi > 50) {
-          dernierEnvoi = now;
-          if (onTraitPoints && bufferReseau.length) {
-            onTraitPoints(idCourant, bufferReseau);
-            bufferReseau = [];
-          }
-        }
-      })
-      .onEnd(() => {
-        if (!idCourant) return;
-        // Vider le buffer réseau restant
-        if (onTraitPoints && bufferReseau.length) {
-          onTraitPoints(idCourant, bufferReseau);
-          bufferReseau = [];
-        }
-        onTraitFin && onTraitFin(idCourant);
-        // Remonter le trait complet au parent (une seule fois) puis effacer l'actif
-        setActif((prev) => {
-          if (prev && onTraitTermine) onTraitTermine(prev);
-          return null;
-        });
-        idCourant = null;
-      });
+  // Termine le trait en cours (relâchement ou interruption).
+  function terminer() {
+    const st = trace.current;
+    if (!st.id) return;
+    const v = vals.current;
+    if (v.onTraitPoints && st.buffer.length) { v.onTraitPoints(st.id, st.buffer); st.buffer = []; }
+    v.onTraitFin && v.onTraitFin(st.id);
+    setActif((prev) => {
+      if (prev && v.onTraitTermine) v.onTraitTermine(prev); // remonter le trait complet au parent
+      return null;
+    });
+    st.id = null;
   }
+
+  // PanResponder créé une seule fois ; lit vals.current pour les valeurs à jour.
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => vals.current.interactif,
+        onStartShouldSetPanResponderCapture: () => vals.current.interactif,
+        onMoveShouldSetPanResponder: () => vals.current.interactif,
+        onMoveShouldSetPanResponderCapture: () => vals.current.interactif,
+
+        onPanResponderGrant: (e) => {
+          if (!vals.current.interactif) return;
+          const { locationX, locationY } = e.nativeEvent;
+          const p = norm(locationX, locationY);
+          const id = String(Date.now()) + Math.random().toString(16).slice(2, 6);
+          const c = vals.current.couleur;
+          const t = vals.current.taille;
+          trace.current = { id, buffer: [p], dernier: Date.now() };
+          setActif({ id, couleur: c, taille: t, points: [p] });
+          vals.current.onTraitDebut && vals.current.onTraitDebut({ id, couleur: c, taille: t });
+        },
+
+        onPanResponderMove: (e) => {
+          const st = trace.current;
+          if (!st.id) return;
+          const { locationX, locationY } = e.nativeEvent;
+          const p = norm(locationX, locationY);
+          setActif((prev) => (prev ? { ...prev, points: [...prev.points, p] } : prev));
+          st.buffer.push(p);
+          const now = Date.now();
+          if (now - st.dernier > 50) {
+            st.dernier = now;
+            if (vals.current.onTraitPoints && st.buffer.length) {
+              vals.current.onTraitPoints(st.id, st.buffer);
+              st.buffer = [];
+            }
+          }
+        },
+
+        onPanResponderRelease: () => terminer(),
+        onPanResponderTerminate: () => terminer(),
+        onPanResponderTerminationRequest: () => false, // on garde la main pendant qu'on dessine
+      }),
+    []
+  );
 
   return (
     <View
@@ -138,26 +133,21 @@ export default function Canvas({
       onLayout={(e) =>
         setDim({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
       }
+      {...responder.panHandlers}
     >
-      <GestureDetector gesture={panRef.current}>
-        <Svg width="100%" height="100%">
-          {/* Fond de couleur */}
-          <Rect x="0" y="0" width="100%" height="100%" fill={fond} />
-          {/* Traits terminés (mémoïsés) */}
-          <TraitsTermines traits={traits} w={dim.w} h={dim.h} />
-          {/* Trait en cours (uniquement le dessinateur en a un) */}
-          {actif && (
-            <Path
-              d={versChemin(actif.points, dim.w, dim.h)}
-              stroke={actif.couleur}
-              strokeWidth={actif.taille}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-        </Svg>
-      </GestureDetector>
+      {/* pointerEvents none : le Svg ne capte pas les touches, elles vont au View (PanResponder) */}
+      <Svg width="100%" height="100%" pointerEvents="none">
+        <Rect x="0" y="0" width="100%" height="100%" fill={fond} />
+        <TraitsTermines traits={traits} w={dim.w} h={dim.h} />
+        {actif && actif.points.length === 1 && (
+          <Circle cx={actif.points[0][0] * dim.w} cy={actif.points[0][1] * dim.h}
+            r={Math.max(1, actif.taille / 2)} fill={actif.couleur} />
+        )}
+        {actif && actif.points.length > 1 && (
+          <Path d={versChemin(actif.points, dim.w, dim.h)} stroke={actif.couleur}
+            strokeWidth={actif.taille} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        )}
+      </Svg>
     </View>
   );
 }

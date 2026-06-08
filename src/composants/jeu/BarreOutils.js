@@ -166,17 +166,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  // Grille de couleurs : 8 colonnes, pastilles agrandies
+  // Grille de couleurs : 8 colonnes, pastilles à TAILLE FIXE (carrés garantis)
   palette: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 8,
+    rowGap: 10,
   },
   swatch: {
-    // 8 par rangée, plus grosses qu'avant et faciles à toucher (+ hitSlop)
-    width: '11.5%',
-    aspectRatio: 1,
+    // Taille fixe = carrés nets et faciles à toucher (8 par rangée, 2 rangées)
+    width: 34,
+    height: 34,
     borderRadius: 10,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.55)',
