@@ -90,6 +90,7 @@ export default function BarreOutils({
             <TouchableOpacity
               key={c}
               onPress={() => selectionnerCouleur(c)}
+              hitSlop={{ top: 8, bottom: 8, left: 5, right: 5 }}
               style={[
                 styles.swatch,
                 { backgroundColor: c },
@@ -165,17 +166,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  // Grille de couleurs 8 colonnes
+  // Grille de couleurs : 8 colonnes, pastilles agrandies
   palette: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    justifyContent: 'space-between',
+    rowGap: 8,
   },
   swatch: {
-    // (100% - 7 gaps de 6) / 8 colonnes ≈ utilise un ratio fixe compact
-    width: '10.5%',
+    // 8 par rangée, plus grosses qu'avant et faciles à toucher (+ hitSlop)
+    width: '11.5%',
     aspectRatio: 1,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.55)',
   },

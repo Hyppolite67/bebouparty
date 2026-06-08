@@ -174,26 +174,25 @@ export default function EcranJeuDessin({ navigation }) {
 
   // --- Callbacks du dessinateur (Canvas) ---
 
-  // Début d'un trait : mise à jour locale + envoi réseau
+  // Début d'un trait : envoi réseau uniquement.
+  // (Le Canvas gère l'affichage local du trait en cours → pas de re-render lourd ici.)
   const handleTraitDebut = useCallback((meta) => {
-    // Ajouter localement (le serveur ne renvoie pas nos propres traits)
-    setTraits((prev) => [...prev, { ...meta, points: [] }]);
     Reseau.traitDebut(meta);
   }, []);
 
-  // Lot de points : mise à jour locale + envoi réseau
+  // Lot de points : envoi réseau uniquement (l'affichage local est dans le Canvas).
   const handleTraitPoints = useCallback((id, points) => {
-    setTraits((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, points: [...t.points, ...points] } : t
-      )
-    );
     Reseau.traitPoints(id, points);
   }, []);
 
-  // Fin d'un trait : envoi réseau uniquement (les points sont déjà là)
+  // Fin d'un trait : envoi réseau.
   const handleTraitFin = useCallback((id) => {
     Reseau.traitFin(id);
+  }, []);
+
+  // Trait terminé : on l'ajoute UNE fois aux traits affichés (côté dessinateur).
+  const handleTraitTermine = useCallback((trait) => {
+    setTraits((prev) => [...prev, trait]);
   }, []);
 
   // --- Callbacks de la BarreOutils ---
@@ -276,6 +275,7 @@ export default function EcranJeuDessin({ navigation }) {
               onTraitDebut={handleTraitDebut}
               onTraitPoints={handleTraitPoints}
               onTraitFin={handleTraitFin}
+              onTraitTermine={handleTraitTermine}
             />
           </View>
 
