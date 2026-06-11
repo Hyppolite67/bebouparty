@@ -37,13 +37,22 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
   const teinteBleue = useSharedValue(0);      // ralenti
   const rotation = useSharedValue(0);         // échange tourbillon
   const escargotOpacity = useSharedValue(0);  // 🐌 ralenti
+  const scaleKart = useSharedValue(1);        // petit bond quand on avance
+  const posPrec = useRef(position);
 
-  // Mise à jour de la position avec transition douce
+  // Mise à jour de la position avec transition douce + bond si on avance
   useEffect(() => {
     translateX.value = withTiming(posEnPourcent(position, longueur), {
       duration: 450,
       easing: Easing.out(Easing.quad),
     });
+    if (position > posPrec.current) {
+      scaleKart.value = withSequence(
+        withTiming(1.3, { duration: 130 }),
+        withTiming(1, { duration: 170 }),
+      );
+    }
+    posPrec.current = position;
   }, [position, longueur]);
 
   // Déclenchement des animations d'effet
@@ -131,6 +140,7 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
     transform: [
       { translateX: secoue.value },
       { rotate: `${rotation.value}deg` },
+      { scale: scaleKart.value },
     ],
   }));
 

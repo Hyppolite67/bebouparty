@@ -8,9 +8,13 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, withRepeat } from 'react-native-reanimated';
 import * as Reseau from '../reseau/ClientReseau';
 import { decrireCombo } from '../donnees/symboles';
 import { DEGRADE_FOND } from '../theme/couleurs';
+
+// Couleur de flash plein écran selon le "ton" du combo / effet.
+const COULEUR_TON = { vert: '#34D399', rouge: '#EF4444', bleu: '#3B82F6', dore: '#FFD700' };
 import ChronoBar from '../composants/jeu/ChronoBar';
 import Piste from '../composants/turbo/Piste';
 import TicketGratter from '../composants/turbo/TicketGratter';
@@ -30,6 +34,25 @@ export default function EcranTurboJackpot({ navigation }) {
   // --- Numéro du ticket courant (la prop `key` change → TicketGratter se remonte) ---
   const [numeroTicket, setNumeroTicket] = useState(1);
 
+  // --- Effets d'écran (tremblement + flash coloré plein écran) ---
+  const secousse = useSharedValue(0);
+  const flashOpacite = useSharedValue(0);
+  const [couleurFlash, setCouleurFlash] = useState('#FFD700');
+
+  function flash(ton) {
+    setCouleurFlash(COULEUR_TON[ton] || '#FFD700');
+    flashOpacite.value = withSequence(withTiming(0.45, { duration: 70 }), withTiming(0, { duration: 320 }));
+  }
+  function trembler(force = 9) {
+    secousse.value = withSequence(
+      withRepeat(withSequence(withTiming(force, { duration: 45 }), withTiming(-force, { duration: 45 })), 4, true),
+      withTiming(0, { duration: 45 }),
+    );
+  }
+
+  const styleSecousse = useAnimatedStyle(() => ({ transform: [{ translateX: secousse.value }] }));
+  const styleFlash = useAnimatedStyle(() => ({ opacity: flashOpacite.value }));
+
   // --- Abonnements réseau (montage unique) ---
   useEffect(() => {
     const offs = [];
@@ -46,6 +69,12 @@ export default function EcranTurboJackpot({ navigation }) {
     offs.push(Reseau.sur('etatCourse', ({ positions: pos, effets: eff }) => {
       setPositions(pos);
       setEffets(eff);
+      // Si JE suis concerné par un effet, l'écran réagit (flash + éventuel tremblement).
+      const moi = Reseau.monId();
+      const miens = (eff || []).filter((x) => x.joueurId === moi);
+      if (miens.some((x) => x.type === 'recule')) { flash('rouge'); trembler(10); }
+      else if (miens.some((x) => x.type === 'echange')) { flash('dore'); trembler(8); }
+      else if (miens.some((x) => x.type === 'boost')) { flash('vert'); }
     }));
 
     // Fil en direct (dernier événement notable)
@@ -72,7 +101,12 @@ export default function EcranTurboJackpot({ navigation }) {
     Reseau.ticketTermine(symboles);
 
     // Affichage local immédiat de la bannière combo (sans attendre le serveur)
-    setBanniere(decrireCombo(symboles));
+    const combo = decrireCombo(symboles);
+    setBanniere(combo);
+
+    // Jus visuel : flash plein écran (couleur du combo) + tremblement sur les gros combos
+    flash(combo.ton);
+    if (combo.ton === 'dore' || combo.ton === 'rouge') trembler(10);
 
     // Masquer la bannière après 1,5 s
     setTimeout(() => setBanniere(null), 1500);
@@ -89,6 +123,7 @@ export default function EcranTurboJackpot({ navigation }) {
       end={{ x: 0.4, y: 1 }}
       style={styles.fond}
     >
+      <Animated.View style={[styles.fond, styleSecousse]}>
       <SafeAreaView style={styles.conteneur}>
 
         {/* ── HAUT (~40%) : chrono + piste ── */}
@@ -138,6 +173,13 @@ export default function EcranTurboJackpot({ navigation }) {
         </View>
 
       </SafeAreaView>
+      </Animated.View>
+
+      {/* Flash plein écran (couleur du combo / de l'effet reçu) */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: couleurFlash }, styleFlash]}
+      />
     </LinearGradient>
   );
 }
