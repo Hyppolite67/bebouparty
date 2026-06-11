@@ -16,7 +16,14 @@ const JEUX = [
 
 export default function EcranSelectionJeu({ navigation }) {
   useEffect(() => {
-    const off1 = Reseau.sur('jeuChoisi', () => navigation.replace('JeuDessin'));
+    // Routage selon le jeu choisi (idJeu = 'turbo' ou 'dessin').
+    // Protégé par isFocused() pour éviter une navigation parasite quand
+    // l'écran est en arrière-plan (ex. flux dessin qui navigue depuis
+    // ReglagesPartie et dont le jeuChoisi rebondit ici).
+    const off1 = Reseau.sur('jeuChoisi', (idJeu) => {
+      if (!navigation.isFocused()) return;
+      navigation.replace(idJeu === 'turbo' ? 'TurboJackpot' : 'JeuDessin');
+    });
     // Si quelque chose ferme la salle, on revient à l'accueil avec un message.
     const off2 = Reseau.sur('erreur', (e) => {
       Alert.alert('Partie terminée', e?.message || 'La salle a été fermée.');
