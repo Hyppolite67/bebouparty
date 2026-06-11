@@ -6,6 +6,7 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const { GestionnaireSalles } = require('./salles');
 const { Partie } = require('./partie');
+const { CourseTurbo } = require('./turbo');
 
 // L'hébergeur cloud fournit le port à utiliser ; sinon on prend 8080 en local.
 const PORT = process.env.PORT || 8080;
@@ -109,6 +110,31 @@ function finirPartie(code) {
   delete parties[code];
 }
 
+// ── Gestion du déroulement de la course Turbo Jackpot ───────────────────────
+
+// Démarre la course : timestamp de départ, diffuse l'état initial, arme le timer de fin
+function demarrerCourse(code) {
+  const slot = parties[code];
+  if (!slot) return;
+  slot.debut = Date.now();
+  diffuser(code, 'COURSE_DEMARRE', {
+    duree: slot.jeu.duree,
+    positions: slot.jeu.positions(),
+    joueurs: gestion.listeJoueurs(code),
+  });
+  // Fin automatique quand la durée est écoulée
+  slot.minuteur = setTimeout(() => finirCourse(code), slot.jeu.duree * 1000);
+}
+
+// Termine la course : arrête le timer, diffuse le classement, nettoie le slot
+function finirCourse(code) {
+  const slot = parties[code];
+  if (!slot) return;
+  clearTimeout(slot.minuteur);
+  diffuser(code, 'COURSE_FINIE', { classement: slot.jeu.classement() });
+  delete parties[code];
+}
+
 // ── Gestion des connexions WebSocket ─────────────────────────────────────────
 
 wss.on('connection', (ws) => {
@@ -141,27 +167,44 @@ wss.on('connection', (ws) => {
       if (gestion.estHote(ws.idSocket)) diffuser(code, 'PARTIE_LANCEE');
     }
 
-    // L'hôte choisit le jeu et ses réglages → créer la partie, naviguer, puis démarrer le 1er tour
+    // L'hôte choisit le jeu et ses réglages → créer la partie, naviguer, puis démarrer le jeu
     else if (msg.type === 'CHOISIR_JEU') {
       if (!gestion.estHote(ws.idSocket)) return;
-      const reglages = msg.reglages || { manches: 2, duree: 80 };
       const joueurs = gestion.listeJoueurs(code);
-      parties[code] = {
-        partie: new Partie(joueurs, reglages),
-        minuteur: null,
-        debut: null,
-        duree: reglages.duree,
-      };
-      // Faire naviguer toute la salle vers l'écran de jeu
-      diffuser(code, 'JEU_CHOISI', { idJeu: msg.idJeu });
-      // Lancer le 1er tour (choix du mot pour le dessinateur)
-      demarrerTourEtAnnoncer(code);
+
+      if (msg.idJeu === 'turbo') {
+        // ── Course Turbo Jackpot ──
+        const jeu = new CourseTurbo(joueurs, { duree: 60 });
+        parties[code] = {
+          idJeu: 'turbo',
+          jeu,
+          debut: null,
+          duree: 60,
+          minuteur: null,
+        };
+        diffuser(code, 'JEU_CHOISI', { idJeu: 'turbo' });
+        demarrerCourse(code);
+      } else {
+        // ── Dessine-moi (comportement original inchangé) ──
+        const reglages = msg.reglages || { manches: 2, duree: 80 };
+        parties[code] = {
+          idJeu: 'dessin',
+          partie: new Partie(joueurs, reglages),
+          minuteur: null,
+          debut: null,
+          duree: reglages.duree,
+        };
+        // Faire naviguer toute la salle vers l'écran de jeu
+        diffuser(code, 'JEU_CHOISI', { idJeu: msg.idJeu || 'dessin' });
+        // Lancer le 1er tour (choix du mot pour le dessinateur)
+        demarrerTourEtAnnoncer(code);
+      }
     }
 
     // Le dessinateur choisit son mot → lancer le chrono et informer tout le monde
     else if (msg.type === 'CHOISIR_MOT') {
       const slot = parties[code];
-      if (!slot) return;
+      if (!slot || slot.idJeu !== 'dessin') return; // garde-fou : dessin uniquement
       const { partie } = slot;
       // Seul le dessinateur courant peut choisir le mot
       if (ws.idSocket !== partie.dessinateurId) return;
@@ -176,7 +219,7 @@ wss.on('connection', (ws) => {
     // Messages de dessin : relayer uniquement depuis le dessinateur courant vers les autres
     else if (['TRAIT_DEBUT', 'TRAIT_POINTS', 'TRAIT_FIN', 'ANNULER', 'EFFACER_TOUT', 'FOND'].includes(msg.type)) {
       const slot = parties[code];
-      if (!slot) return;
+      if (!slot || slot.idJeu !== 'dessin') return; // garde-fou : dessin uniquement
       if (ws.idSocket !== slot.partie.dessinateurId) return;
       // Relayer le message tel quel (en repassant toutes les propriétés sauf "type")
       const { type, ...donnees } = msg;
@@ -186,7 +229,7 @@ wss.on('connection', (ws) => {
     // Un devineur envoie une réponse
     else if (msg.type === 'DEVINER') {
       const slot = parties[code];
-      if (!slot) return;
+      if (!slot || slot.idJeu !== 'dessin') return; // garde-fou : dessin uniquement
       const { partie } = slot;
       const r = partie.deviner(ws.idSocket, msg.texte, tempsRestant(code));
       if (r.resultat === 'exact') {
@@ -205,15 +248,31 @@ wss.on('connection', (ws) => {
       }
       // 'interdit', 'deja', 'inactif' → ignorer silencieusement
     }
+
+    // Un joueur soumet un ticket gratté (Turbo Jackpot)
+    else if (msg.type === 'TICKET_TERMINE') {
+      const slot = parties[code];
+      if (!slot || slot.idJeu !== 'turbo') return; // garde-fou : turbo uniquement
+      const msEcoule = Date.now() - slot.debut;
+      const r = slot.jeu.appliquerTicket(ws.idSocket, msg.symboles, Date.now());
+      diffuser(code, 'ETAT_COURSE', { positions: slot.jeu.positions(), effets: r.effets });
+      if (r.feed) diffuser(code, 'FEED', r.feed);
+      // Vérifier si la course est terminée (temps écoulé OU un kart à l'arrivée)
+      if (slot.jeu.estFinie(msEcoule)) finirCourse(code);
+    }
   });
 
   ws.on('close', () => {
     const codeSalle = ws.codeSalle;
     // Gérer la déconnexion dans la partie en cours avant de retirer le joueur de la salle
     if (codeSalle && parties[codeSalle]) {
-      const { partie } = parties[codeSalle];
-      const r = partie.joueurParti(ws.idSocket);
-      if (r.tourTermine) finirTour(codeSalle);
+      const slot = parties[codeSalle];
+      if (slot.idJeu === 'dessin') {
+        // Dessine-moi : notifier la partie et terminer le tour si nécessaire
+        const r = slot.partie.joueurParti(ws.idSocket);
+        if (r.tourTermine) finirTour(codeSalle);
+      }
+      // Turbo : la course continue sans le joueur déconnecté (pas de logique spéciale v1)
     }
     const r = gestion.retirer(ws.idSocket);
     if (r && !r.ferme) diffuserListe(r.code);
