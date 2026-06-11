@@ -93,3 +93,28 @@ export function decrireCombo(symboles) {
 function desc(nom, description, ton, icone) {
   return { nom, description, ton, icone };
 }
+
+// Mélange un tableau (Fisher-Yates).
+function melanger(t) {
+  const a = [...t];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Tire les 3 symboles d'un ticket.
+// Si forcerBon = true (règle anti-poisse après plusieurs tickets nuls), on
+// GARANTIT un bon résultat (au moins +1 case), avec parfois un gros combo.
+export function tirerSymbolesTicket(forcerBon = false) {
+  if (!forcerBon) return [tirerSymbole(), tirerSymbole(), tirerSymbole()];
+  const r = Math.random();
+  if (r < 0.12) return melanger(['fusee', 'etoile', 'joker']); // JACKPOT
+  if (r < 0.30) return ['fusee', 'fusee', 'fusee'];            // TURBO MAX (+3)
+  if (r < 0.55) return melanger(['fusee', 'fusee', 'etoile']); // TURBO (+2)
+  // Sinon : une paire gagnante simple (+1), 3e symbole neutre (jamais une paire perdante)
+  const bon = Math.random() < 0.5 ? 'fusee' : 'etoile';
+  const autre = ['bombe', 'bouclier', 'joker'][Math.floor(Math.random() * 3)];
+  return melanger([bon, bon, autre]);
+}

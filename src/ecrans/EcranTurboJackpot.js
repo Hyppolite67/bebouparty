@@ -4,22 +4,39 @@
 // Layout : ChronoBar + Piste (haut ~40%) — zone ticket : FilDirect + TicketGratter (bas ~60%).
 // La BanniereCombo s'affiche en overlay au-dessus du ticket pendant 1,5 s.
 
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming, withRepeat } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import * as Reseau from '../reseau/ClientReseau';
 import { decrireCombo } from '../donnees/symboles';
-import { DEGRADE_FOND } from '../theme/couleurs';
-
-// Couleur de flash plein écran selon le "ton" du combo / effet.
-const COULEUR_TON = { vert: '#34D399', rouge: '#EF4444', bleu: '#3B82F6', dore: '#FFD700' };
+import { DEGRADE_FOND, COULEURS } from '../theme/couleurs';
+import { POLICES } from '../theme/styles';
 import ChronoBar from '../composants/jeu/ChronoBar';
 import Piste from '../composants/turbo/Piste';
 import TicketGratter from '../composants/turbo/TicketGratter';
 import BanniereCombo from '../composants/turbo/BanniereCombo';
 import FilDirect from '../composants/turbo/FilDirect';
+
+// Couleur de flash plein écran selon le "ton" du combo / effet.
+const COULEUR_TON = { vert: '#34D399', rouge: '#EF4444', bleu: '#3B82F6', dore: '#FFD700' };
+
+// Compte à rebours « 3 · 2 · 1 · GO » au départ de la course.
+function CompteARebours({ valeur }) {
+  const s = useSharedValue(0);
+  useEffect(() => {
+    s.value = 0;
+    s.value = withSequence(withTiming(1.35, { duration: 180 }), withTiming(1, { duration: 130 }));
+  }, [valeur]);
+  const st = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
+  return (
+    <View style={styles.compteOverlay} pointerEvents="none">
+      <Animated.Text style={[styles.compteTexte, st]}>{valeur}</Animated.Text>
+    </View>
+  );
+}
 
 export default function EcranTurboJackpot({ navigation }) {
   // --- État de la course ---
@@ -33,6 +50,21 @@ export default function EcranTurboJackpot({ navigation }) {
 
   // --- Numéro du ticket courant (la prop `key` change → TicketGratter se remonte) ---
   const [numeroTicket, setNumeroTicket] = useState(1);
+
+  // --- Règle anti-poisse : après 5 tickets nuls d'affilée, le suivant est garanti bon ---
+  const streakNul = useRef(0);
+  const [forcerBon, setForcerBon] = useState(false);
+
+  // --- Compte à rebours de départ ---
+  const [compte, setCompte] = useState(null);
+  function lancerCompteARebours() {
+    const etapes = [3, 2, 1, 'GO'];
+    etapes.forEach((v, i) => setTimeout(() => {
+      setCompte(v);
+      Haptics.impactAsync(v === 'GO' ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+    }, i * 700));
+    setTimeout(() => setCompte(null), etapes.length * 700);
+  }
 
   // --- Effets d'écran (tremblement + flash coloré plein écran) ---
   const secousse = useSharedValue(0);
@@ -63,6 +95,7 @@ export default function EcranTurboJackpot({ navigation }) {
       setPositions(pos);
       setDuree(d);
       setDebut(Date.now());
+      lancerCompteARebours();
     }));
 
     // Mise à jour de l'état de la course (positions + effets visuels)
@@ -72,8 +105,8 @@ export default function EcranTurboJackpot({ navigation }) {
       // Si JE suis concerné par un effet, l'écran réagit (flash + éventuel tremblement).
       const moi = Reseau.monId();
       const miens = (eff || []).filter((x) => x.joueurId === moi);
-      if (miens.some((x) => x.type === 'recule')) { flash('rouge'); trembler(10); }
-      else if (miens.some((x) => x.type === 'echange')) { flash('dore'); trembler(8); }
+      if (miens.some((x) => x.type === 'recule')) { flash('rouge'); trembler(10); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); }
+      else if (miens.some((x) => x.type === 'echange')) { flash('dore'); trembler(8); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); }
       else if (miens.some((x) => x.type === 'boost')) { flash('vert'); }
     }));
 
@@ -104,9 +137,17 @@ export default function EcranTurboJackpot({ navigation }) {
     const combo = decrireCombo(symboles);
     setBanniere(combo);
 
-    // Jus visuel : flash plein écran (couleur du combo) + tremblement sur les gros combos
+    // Règle anti-poisse : on compte les tickets nuls d'affilée ; à partir de 5,
+    // le prochain ticket est garanti bon (forcerBon).
+    if (combo.nom === 'AUCUN') streakNul.current += 1; else streakNul.current = 0;
+    setForcerBon(streakNul.current >= 5);
+
+    // Jus visuel + vibration selon le résultat
     flash(combo.ton);
     if (combo.ton === 'dore' || combo.ton === 'rouge') trembler(10);
+    if (combo.ton === 'dore' || combo.ton === 'vert') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    else if (combo.ton === 'rouge') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 
     // Masquer la bannière après 1,5 s
     setTimeout(() => setBanniere(null), 1500);
@@ -160,6 +201,7 @@ export default function EcranTurboJackpot({ navigation }) {
             <TicketGratter
               key={numeroTicket}
               numero={numeroTicket}
+              forcerBon={forcerBon}
               onTicketComplet={surTicket}
             />
 
@@ -180,6 +222,9 @@ export default function EcranTurboJackpot({ navigation }) {
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { backgroundColor: couleurFlash }, styleFlash]}
       />
+
+      {/* Compte à rebours de départ « 3 · 2 · 1 · GO » */}
+      {compte !== null && <CompteARebours valeur={compte} />}
     </LinearGradient>
   );
 }
@@ -236,5 +281,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     borderRadius: 22,
     zIndex: 10,
+  },
+
+  // Compte à rebours de départ
+  compteOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,10,34,0.45)',
+    zIndex: 50,
+  },
+  compteTexte: {
+    fontFamily: POLICES.titre,
+    fontSize: 96,
+    color: COULEURS.jaune,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 12,
   },
 });

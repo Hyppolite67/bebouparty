@@ -25,7 +25,7 @@ function posEnPourcent(pos, longueur) {
 }
 
 // --- Kart animé : un kart par joueur ---
-function KartJoueur({ joueur, position, longueur, effetActif }) {
+function KartJoueur({ joueur, position, longueur, effetActif, rang }) {
   // Position horizontale en %
   const translateX = useSharedValue(posEnPourcent(position, longueur));
 
@@ -171,8 +171,11 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
       {/* Escargot ralenti (au-dessus du kart) */}
       <Animated.Text style={[styles.escargot, styleEscargot]}>🐌</Animated.Text>
 
-      {/* Pseudo */}
-      <Text style={styles.pseudo} numberOfLines={1}>{joueur.pseudo}</Text>
+      {/* Rang + pseudo */}
+      <View style={styles.pseudoRow}>
+        {rang ? <Text style={[styles.rang, rang === 1 && styles.rangOr]}>{rang}</Text> : null}
+        <Text style={styles.pseudo} numberOfLines={1}>{joueur.pseudo}</Text>
+      </View>
 
       {/* Avatar mascotte */}
       <View style={styles.avatarWrap}>
@@ -197,36 +200,45 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
   );
 }
 
+// --- Drapeau d'arrivée animé (s'agite) ---
+function Drapeau() {
+  const r = useSharedValue(0);
+  useEffect(() => {
+    r.value = withRepeat(withSequence(withTiming(9, { duration: 380 }), withTiming(-9, { duration: 380 })), -1, true);
+  }, []);
+  const st = useAnimatedStyle(() => ({ transform: [{ rotate: `${r.value}deg` }] }));
+  return <Animated.Text style={[styles.drapeau, st]}>🏁</Animated.Text>;
+}
+
 // --- Composant principal Piste ---
 export default function Piste({ joueurs = [], positions = {}, longueur = 20, effets = [] }) {
-  // On construit un map joueurId → dernier effet pour ce joueur
-  // (on utilise une clé qui change pour re-déclencher useEffect)
+  // Dernier effet par joueur (pour les animations)
   const derniersEffets = {};
-  for (const e of effets) {
-    derniersEffets[e.joueurId] = e.type;
-  }
+  for (const e of effets) derniersEffets[e.joueurId] = e.type;
+
+  // Mini-classement : rang de chaque joueur selon sa position
+  const ordre = [...joueurs].sort((a, b) => (positions[b.id] ?? 0) - (positions[a.id] ?? 0));
+  const rangs = {};
+  ordre.forEach((j, i) => { rangs[j.id] = i + 1; });
 
   return (
     <View style={styles.piste}>
-      {/* Ligne d'arrivée à damier (droite) */}
+      {/* Ligne d'arrivée à damier (droite) + drapeau animé */}
       <View style={styles.ligneArrivee} />
+      <Drapeau />
 
       {/* Lanes */}
       {joueurs.map((joueur, idx) => (
         <View
           key={joueur.id}
-          style={[
-            styles.lane,
-            idx < joueurs.length - 1 && styles.laneSeparateur,
-          ]}
+          style={[styles.lane, idx < joueurs.length - 1 && styles.laneSeparateur]}
         >
           <KartJoueur
             joueur={joueur}
             position={positions[joueur.id] ?? 0}
             longueur={longueur}
-            // On passe une chaîne composée du type + un timestamp pour re-déclencher
-            // useEffect même si le même effet arrive deux fois de suite
             effetActif={derniersEffets[joueur.id] ?? null}
+            rang={rangs[joueur.id]}
           />
         </View>
       ))}
@@ -365,4 +377,30 @@ const styles = StyleSheet.create({
     marginBottom: -2,
     zIndex: 2,
   },
+
+  // Drapeau d'arrivée animé
+  drapeau: {
+    position: 'absolute',
+    top: 2,
+    right: 4,
+    fontSize: 20,
+    zIndex: 3,
+  },
+
+  // Rang (mini-classement)
+  pseudoRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  rang: {
+    minWidth: 14,
+    height: 14,
+    lineHeight: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    color: '#241048',
+    fontSize: 9,
+    fontWeight: '700',
+    textAlign: 'center',
+    overflow: 'hidden',
+    paddingHorizontal: 2,
+  },
+  rangOr: { backgroundColor: '#FFD700' },
 });

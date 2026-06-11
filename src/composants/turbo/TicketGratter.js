@@ -13,7 +13,8 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, PanResponder } from 'react-native';
-import { SYMBOLES, tirerSymbole } from '../../donnees/symboles';
+import * as Haptics from 'expo-haptics';
+import { SYMBOLES, tirerSymbolesTicket } from '../../donnees/symboles';
 import { COULEURS } from '../../theme/couleurs';
 import { POLICES } from '../../theme/styles';
 import CaseGratter from './CaseGratter';
@@ -23,13 +24,14 @@ const NOMS_SYMBOLES = {
   escargot: 'Escargot', bouclier: 'Bouclier', joker: 'Joker',
 };
 
-const N = 8;             // grille 8×8 (doit correspondre à CaseGratter)
+const N = 14;            // grille fine (doit correspondre à CaseGratter) → moins pixelisé
 const SEUIL = 0.50;      // révélation dès 50% gratté
-const RAYON = 1;         // « brosse » : rayon en cellules (1 = pavé 3×3 par point)
+const RAYON = 2;         // « brosse » : rayon en cellules (pavé 5×5 par point)
 const RATIO_CASE = 0.74; // largeur/hauteur d'une case
 
-export default function TicketGratter({ numero = 1, onTicketComplet }) {
-  const [symboles] = useState(() => [tirerSymbole(), tirerSymbole(), tirerSymbole()]);
+export default function TicketGratter({ numero = 1, forcerBon = false, onTicketComplet }) {
+  // Règle anti-poisse : si forcerBon, ce ticket garantit un bon résultat.
+  const [symboles] = useState(() => tirerSymbolesTicket(forcerBon));
   const [revelees, setRevelees] = useState([false, false, false]);
   // Re-rendu déclenché quand on gratte (les cellules sont stockées en ref pour la vitesse).
   const [, setVersion] = useState(0);
@@ -37,6 +39,7 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
   const cellules = useRef([new Set(), new Set(), new Set()]); // cellules grattées par case
   const frames = useRef([null, null, null]);                   // {x,y,w,h} de chaque caseWrap
   const completAppele = useRef(false);
+  const dernierHaptic = useRef(0);
   const reveleesRef = useRef(revelees);
   reveleesRef.current = revelees;
 
@@ -91,7 +94,16 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
 
     setVersion((v) => v + 1); // redessine les tuiles
 
+    // Petite vibration de grattage (throttlée pour ne pas spammer)
+    const t = Date.now();
+    if (t - dernierHaptic.current > 80) {
+      dernierHaptic.current = t;
+      Haptics.selectionAsync();
+    }
+
     if (set.size / (N * N) >= SEUIL) {
+      // Vibration plus marquée à la révélation d'une case
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setRevelees((r) => {
         if (r[i]) return r;
         const s = [...r];
@@ -151,6 +163,7 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
             <CaseGratter
               symboleEmoji={SYMBOLES[cle]}
               touchees={cellules.current[i]}
+              version={cellules.current[i].size}
               revele={revelees[i]}
             />
             <Text style={[styles.labelSymbole, !revelees[i] && styles.labelCache]}>
