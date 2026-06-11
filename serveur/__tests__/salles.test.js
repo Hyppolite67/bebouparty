@@ -1,10 +1,10 @@
 // serveur/__tests__/salles.test.js
 const { GestionnaireSalles } = require('../salles');
 
-test('creerSalle génère un code BEBOU-XXXX et ajoute l\'hôte', () => {
+test('creerSalle génère un code à 4 chiffres et ajoute l\'hôte', () => {
   const g = new GestionnaireSalles();
   const { code, joueur } = g.creerSalle('sock1', { pseudo: 'Léa', mascotte: {} });
-  expect(code).toMatch(/^BEBOU-\d{4}$/);
+  expect(code).toMatch(/^\d{4}$/);
   expect(joueur.estHote).toBe(true);
   expect(g.listeJoueurs(code)).toHaveLength(1);
 });

@@ -7,8 +7,9 @@ class GestionnaireSalles {
   }
 
   genererCode() {
+    // Code = simple suite de 4 chiffres (ex. "4829"), facile à dire et à taper.
     let code;
-    do { code = 'BEBOU-' + Math.floor(1000 + Math.random() * 9000); } while (this.salles[code]);
+    do { code = String(Math.floor(1000 + Math.random() * 9000)); } while (this.salles[code]);
     return code;
   }
 
