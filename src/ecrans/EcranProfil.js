@@ -13,7 +13,7 @@ import { POLICES } from '../theme/styles';
 
 export default function EcranProfil({ route, navigation }) {
   const intention = route.params?.intention || 'creer';
-  const { pseudo, setPseudo, mascotte, setMascotte, adresseServeur, sauverProfil, profil } = useJoueur();
+  const { pseudo, setPseudo, mascotte, setMascotte, sauverProfil, profil } = useJoueur();
   const [code, setCode] = useState('');
   const [enCours, setEnCours] = useState(false);
 
@@ -23,10 +23,14 @@ export default function EcranProfil({ route, navigation }) {
     setEnCours(true);
     await sauverProfil();
     try {
-      await Reseau.connecter(adresseServeur);
+      // On se connecte au serveur de jeu en ligne (cloud). Marche en WiFi comme en 4G/5G.
+      await Reseau.connecter();
     } catch {
       setEnCours(false);
-      Alert.alert('Connexion impossible', "Vérifie l'adresse du serveur et le WiFi.");
+      Alert.alert(
+        'Connexion impossible',
+        "Le serveur ne répond pas. Réessaie dans quelques secondes (il se réveille parfois) et vérifie ta connexion internet.",
+      );
       return;
     }
     if (intention === 'creer') {
@@ -64,8 +68,9 @@ export default function EcranProfil({ route, navigation }) {
           </CarteGlass>
         )}
 
-        <BoutonPrincipal titre={enCours ? 'Connexion...' : "C'est parti !"} icone="🎉"
+        <BoutonPrincipal titre={enCours ? 'Connexion… (réveil du serveur)' : "C'est parti !"} icone="🎉"
           couleur={COULEURS.violet} onPress={valider} desactive={enCours} />
+        {enCours && <Text style={styles.hint}>Le serveur se réveille parfois (~30 s la 1re fois). Patiente…</Text>}
       </ScrollView>
     </FondDegrade>
   );
@@ -75,4 +80,5 @@ const styles = StyleSheet.create({
   titre: { fontFamily: POLICES.titre, fontSize: 30, color: COULEURS.jaune, textAlign: 'center' },
   label: { fontFamily: POLICES.texte, fontSize: 12, color: COULEURS.jaune, marginBottom: 4 },
   input: { fontFamily: POLICES.texteGras, fontSize: 18, color: COULEURS.blanc, paddingVertical: 6 },
+  hint: { fontFamily: POLICES.texte, fontSize: 12.5, color: COULEURS.texteDoux, textAlign: 'center' },
 });

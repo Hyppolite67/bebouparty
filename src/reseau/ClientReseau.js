@@ -51,19 +51,49 @@ export function construireUrl(adresse) {
   return `wss://${a}`;                                   // domaine seul -> cloud sécurisé (wss)
 }
 
-// adresse = "192.168.1.20:8080" (local) ou "bebouparty.onrender.com" (cloud)
-export function connecter(adresse) {
+// Adresse du serveur de jeu EN LIGNE (cloud Render).
+// Tout le monde s'y connecte, quel que soit le réseau (WiFi, 4G/5G) : aucun
+// besoin d'être sur le même WiFi. On la fige ici pour éviter toute erreur d'adresse.
+export const ADRESSE_SERVEUR = 'bebouparty.onrender.com';
+
+// adresse : domaine cloud (défaut) ou "IP:port" pour un serveur local de test.
+export async function connecter(adresse = ADRESSE_SERVEUR) {
   // Nouvelle session : on oublie la liste de joueurs et l'identifiant précédents.
   derniereListeJoueurs = null;
   _monId = null;
+
+  const urlWs = construireUrl(adresse);
+  // URL HTTP(S) équivalente, pour réveiller le serveur (ws->http, wss->https).
+  const urlHttp = urlWs.replace(/^ws/i, 'http');
+
+  // 1) RÉVEIL : sur l'offre gratuite Render, le serveur s'endort après ~15 min.
+  // Cette requête HTTP "attend" qu'il se réveille (jusqu'à ~1 min la 1re fois),
+  // de sorte que le WebSocket se connecte ensuite à un serveur déjà réveillé.
+  try {
+    let ctrl, minuteur;
+    if (typeof AbortController !== 'undefined') {
+      ctrl = new AbortController();
+      minuteur = setTimeout(() => ctrl.abort(), 70000);
+    }
+    await fetch(urlHttp, ctrl ? { signal: ctrl.signal } : undefined);
+    if (minuteur) clearTimeout(minuteur);
+  } catch (e) {
+    // Échec du réveil : on tente quand même la connexion WebSocket juste après.
+  }
+
+  // 2) Connexion WebSocket vers le serveur (désormais) réveillé.
   return new Promise((resolve, reject) => {
     try {
-      socket = new WebSocket(construireUrl(adresse));
+      socket = new WebSocket(urlWs);
     } catch (e) { reject(e); return; }
 
-    socket.onopen = () => resolve();
-    socket.onerror = () => { emettre('deconnecte'); reject(new Error('connexion impossible')); };
-    socket.onclose = () => emettre('deconnecte');
+    let resolu = false;
+    socket.onopen = () => { resolu = true; resolve(); };
+    socket.onerror = () => {
+      if (!resolu) reject(new Error('connexion impossible'));
+      else emettre('deconnecte');
+    };
+    socket.onclose = () => { if (resolu) emettre('deconnecte'); };
     socket.onmessage = (ev) => {
       const msg = parser(ev.data);
       if (!msg) return;
