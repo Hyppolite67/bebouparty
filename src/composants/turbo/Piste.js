@@ -31,7 +31,8 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
 
   // Animations d'effet
   const flashOpacity = useSharedValue(0);     // flash boost/recule
-  const flashCouleur = useRef(COULEURS.jaune);
+  // Couleur du flash : valeur ANIMÉE (et non une ref) car elle est lue dans un worklet.
+  const flashCouleur = useSharedValue(COULEURS.jaune);
   const secoue = useSharedValue(0);           // tremblement recule
   const bouclierOpacity = useSharedValue(0);  // aura bouclier
   const teinteBleue = useSharedValue(0);      // ralenti
@@ -61,7 +62,7 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
 
     switch (effetActif) {
       case 'boost':
-        flashCouleur.current = COULEURS.jaune;
+        flashCouleur.value = COULEURS.jaune;
         // Flash doré bref (0 → 1 → 0 en 600 ms)
         flashOpacity.value = withSequence(
           withTiming(1, { duration: 80 }),
@@ -71,7 +72,7 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
         break;
 
       case 'recule':
-        flashCouleur.current = COULEURS.erreur;
+        flashCouleur.value = COULEURS.erreur;
         // Flash rouge
         flashOpacity.value = withSequence(
           withTiming(0.8, { duration: 80 }),
@@ -123,7 +124,7 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
           withTiming(360, { duration: 400, easing: Easing.out(Easing.cubic) }),
           withTiming(0, { duration: 0 }),
         );
-        flashCouleur.current = '#A855F7'; // violet
+        flashCouleur.value = '#A855F7'; // violet
         flashOpacity.value = withSequence(
           withTiming(0.7, { duration: 100 }),
           withTiming(0, { duration: 150 }),
@@ -147,7 +148,7 @@ function KartJoueur({ joueur, position, longueur, effetActif }) {
   // Flash coloré (boost = doré, recule = rouge, echange = violet)
   const styleFlash = useAnimatedStyle(() => ({
     opacity: flashOpacity.value,
-    backgroundColor: flashCouleur.current,
+    backgroundColor: flashCouleur.value,
   }));
 
   // Aura bouclier
