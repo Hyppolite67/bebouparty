@@ -10,7 +10,8 @@ import { POLICES } from '../theme/styles';
 
 const JEUX = [
   { id: 'dessin', nom: 'Devine le dessin', icone: '🖌️', couleur: COULEURS.violet, description: 'Dessine, les autres devinent !', verrouille: false },
-  ...[...Array(7)].map((_, i) => ({ id: 'verrou' + i, verrouille: true })),
+  { id: 'turbo',  nom: 'Turbo Jackpot',    icone: '🏎️', couleur: '#FF9F45',        description: 'Gratte et fonce !',             verrouille: false },
+  ...[...Array(6)].map((_, i) => ({ id: 'verrou' + i, verrouille: true })),
 ];
 
 export default function EcranSelectionJeu({ navigation }) {
@@ -24,9 +25,16 @@ export default function EcranSelectionJeu({ navigation }) {
     return () => { off1(); off2(); };
   }, []);
 
-  // Pour la carte active, l'hôte est redirigé vers l'écran de réglages.
-  // Les joueurs non-hôtes seront redirigés vers JeuDessin par l'abonnement jeuChoisi ci-dessus.
-  const choisir = (jeu) => { navigation.navigate('ReglagesPartie'); };
+  // Pour « Devine le dessin », l'hôte passe par l'écran de réglages.
+  // Pour « Turbo Jackpot », on choisit directement (pas de réglages).
+  // Les joueurs non-hôtes sont redirigés par l'abonnement jeuChoisi ci-dessus.
+  const choisir = (jeu) => {
+    if (jeu.id === 'turbo') {
+      Reseau.choisirJeu('turbo');
+    } else {
+      navigation.navigate('ReglagesPartie');
+    }
+  };
 
   return (
     <FondDegrade>
