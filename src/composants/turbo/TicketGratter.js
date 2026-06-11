@@ -1,12 +1,11 @@
 // src/composants/turbo/TicketGratter.js
 // Le ticket à gratter : 3 cases + UNE seule zone de grattage qui les englobe.
 //
-// Pourquoi une zone unique ? Avec 3 PanResponder séparés, le doigt « décrochait »
-// dans les espaces entre les cases (frustrant). Ici, un SEUL PanResponder couvre
-// toute la rangée : on route chaque point vers la case visée (ou la plus proche si
-// le doigt est dans un trou), pour un grattage fluide et continu.
+// Grattage SANS masque SVG : on suit les cellules touchées d'une grille N×N
+// (avec une petite « brosse » autour du doigt) ; chaque case affiche l'argent
+// sous forme de tuiles, et masque les cellules grattées en ne les dessinant plus.
 //
-// Révélation : dès que 50% d'une case est grattée (seuil abaissé pour le confort).
+// Révélation : dès qu'une case dépasse 50% de cellules grattées.
 //
 // Props :
 //   numero          (int)   numéro du ticket
@@ -24,38 +23,37 @@ const NOMS_SYMBOLES = {
   escargot: 'Escargot', bouclier: 'Bouclier', joker: 'Joker',
 };
 
-const N = 8;            // grille 8×8 pour estimer le % gratté
-const SEUIL = 0.50;     // révélation dès 50% gratté
-const RATIO_CASE = 0.74; // largeur/hauteur d'une case (cohérent avec CaseGratter)
+const N = 8;             // grille 8×8 (doit correspondre à CaseGratter)
+const SEUIL = 0.50;      // révélation dès 50% gratté
+const RAYON = 1;         // « brosse » : rayon en cellules (1 = pavé 3×3 par point)
+const RATIO_CASE = 0.74; // largeur/hauteur d'une case
 
 export default function TicketGratter({ numero = 1, onTicketComplet }) {
   const [symboles] = useState(() => [tirerSymbole(), tirerSymbole(), tirerSymbole()]);
-  const [chemins, setChemins] = useState(['', '', '']); // tracé gratté (coords locales) par case
   const [revelees, setRevelees] = useState([false, false, false]);
+  // Re-rendu déclenché quand on gratte (les cellules sont stockées en ref pour la vitesse).
+  const [, setVersion] = useState(0);
 
-  const frames = useRef([null, null, null]);             // {x,y,w,h} de chaque caseWrap (coords du conteneur)
-  const cellules = useRef([new Set(), new Set(), new Set()]);
+  const cellules = useRef([new Set(), new Set(), new Set()]); // cellules grattées par case
+  const frames = useRef([null, null, null]);                   // {x,y,w,h} de chaque caseWrap
   const completAppele = useRef(false);
   const reveleesRef = useRef(revelees);
   reveleesRef.current = revelees;
 
-  // Hauteur réelle d'une case (sa largeur / ratio).
   const hauteurCase = (i) => {
     const f = frames.current[i];
     return f ? f.w / RATIO_CASE : 1;
   };
 
-  // Route un point (px,py) du conteneur vers une case ; la plus proche si dans un trou.
+  // Route un point (px,py) du conteneur vers une case (la plus proche si dans un trou).
   function router(px, py) {
     const fs = frames.current;
     let i = fs.findIndex((f) => f && px >= f.x && px <= f.x + f.w);
     if (i < 0) {
-      // Dans un espace entre les cases → la case dont le centre est le plus proche.
       let best = -1, dist = Infinity;
       fs.forEach((f, k) => {
         if (!f) return;
-        const centre = f.x + f.w / 2;
-        const d = Math.abs(px - centre);
+        const d = Math.abs(px - (f.x + f.w / 2));
         if (d < dist) { dist = d; best = k; }
       });
       i = best;
@@ -70,19 +68,33 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
     };
   }
 
-  // Comptabilise la cellule grattée et révèle la case au seuil.
-  function marquer(i, lx, ly) {
+  // Gratte la case i autour du point local (lx,ly) avec une petite brosse.
+  function gratter(i, lx, ly) {
+    if (reveleesRef.current[i]) return;
     const f = frames.current[i];
     if (!f) return;
     const h = hauteurCase(i);
-    const cx = Math.min(N - 1, Math.max(0, Math.floor((lx / f.w) * N)));
-    const cy = Math.min(N - 1, Math.max(0, Math.floor((ly / h) * N)));
-    cellules.current[i].add(cy * N + cx);
+    const cx = Math.floor((lx / f.w) * N);
+    const cy = Math.floor((ly / h) * N);
 
-    if (cellules.current[i].size / (N * N) >= SEUIL && !reveleesRef.current[i]) {
-      setRevelees((prev) => {
-        if (prev[i]) return prev;
-        const s = [...prev];
+    const set = cellules.current[i];
+    let ajoute = false;
+    for (let dy = -RAYON; dy <= RAYON; dy++) {
+      for (let dx = -RAYON; dx <= RAYON; dx++) {
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || x >= N || y < 0 || y >= N) continue;
+        const idx = y * N + x;
+        if (!set.has(idx)) { set.add(idx); ajoute = true; }
+      }
+    }
+    if (!ajoute) return;
+
+    setVersion((v) => v + 1); // redessine les tuiles
+
+    if (set.size / (N * N) >= SEUIL) {
+      setRevelees((r) => {
+        if (r[i]) return r;
+        const s = [...r];
         s[i] = true;
         if (s.every(Boolean) && !completAppele.current) {
           completAppele.current = true;
@@ -102,16 +114,12 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
         onPanResponderGrant: (e) => {
           const { locationX: x, locationY: y } = e.nativeEvent;
           const r = router(x, y);
-          if (!r) return;
-          setChemins((c) => { const s = [...c]; s[r.i] = `${s[r.i]} M ${r.lx.toFixed(1)} ${r.ly.toFixed(1)}`; return s; });
-          marquer(r.i, r.lx, r.ly);
+          if (r) gratter(r.i, r.lx, r.ly);
         },
         onPanResponderMove: (e) => {
           const { locationX: x, locationY: y } = e.nativeEvent;
           const r = router(x, y);
-          if (!r) return;
-          setChemins((c) => { const s = [...c]; s[r.i] = `${s[r.i]} L ${r.lx.toFixed(1)} ${r.ly.toFixed(1)}`; return s; });
-          marquer(r.i, r.lx, r.ly);
+          if (r) gratter(r.i, r.lx, r.ly);
         },
         onPanResponderTerminationRequest: () => false,
       }),
@@ -121,7 +129,6 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
 
   return (
     <View style={styles.ticket}>
-      {/* En-tête : titre doré + numéro */}
       <View style={styles.ticketHaut}>
         <Text style={styles.ticketTitre}>⚡ TURBO JACKPOT</Text>
         <View style={styles.numeroBadge}>
@@ -143,9 +150,8 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
           >
             <CaseGratter
               symboleEmoji={SYMBOLES[cle]}
-              chemin={chemins[i]}
+              touchees={cellules.current[i]}
               revele={revelees[i]}
-              id={`m-${i}`}
             />
             <Text style={[styles.labelSymbole, !revelees[i] && styles.labelCache]}>
               {revelees[i] ? NOMS_SYMBOLES[cle] : ' '}
@@ -187,12 +193,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
   },
-  numeroBadge: {
-    backgroundColor: 'rgba(0,0,0,0.30)',
-    borderRadius: 9,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
+  numeroBadge: { backgroundColor: 'rgba(0,0,0,0.30)', borderRadius: 9, paddingHorizontal: 8, paddingVertical: 3 },
   numeroTexte: { fontFamily: POLICES.texte, fontSize: 11, color: 'rgba(255,255,255,0.65)' },
   cases: {
     flex: 1,
@@ -204,12 +205,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   caseWrap: { flex: 1, alignItems: 'center', gap: 7 },
-  labelSymbole: {
-    fontFamily: POLICES.texteGras,
-    fontSize: 11,
-    color: COULEURS.jaune,
-    height: 16,
-    textAlign: 'center',
-  },
+  labelSymbole: { fontFamily: POLICES.texteGras, fontSize: 11, color: COULEURS.jaune, height: 16, textAlign: 'center' },
   labelCache: { color: 'transparent' },
 });

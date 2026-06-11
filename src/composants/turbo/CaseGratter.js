@@ -1,27 +1,25 @@
 // src/composants/turbo/CaseGratter.js
-// Une case à gratter — composant PASSIF (pas de tactile ici).
-// Le grattage est capté par TicketGratter (une SEULE zone englobant les 3 cases),
-// qui transmet à chaque case le chemin gratté (`chemin`) et l'état révélé (`revele`).
+// Une case à gratter — composant PASSIF (le tactile est géré par TicketGratter).
 //
-//   - L'emoji est affiché DERRIÈRE, dans un <Text> RN (rendu emoji fiable).
-//   - Une couche « argent » (Svg) le recouvre, creusée par le masque `chemin`.
-//   - À la révélation, l'emoji fait un petit POP (scale 0.6 → 1.25 → 1).
+// TECHNIQUE SANS <Mask> (plus de crash natif possible) :
+//   - L'emoji est affiché DERRIÈRE (Text RN), avec un POP à la révélation.
+//   - La couche « argent » est une GRILLE de petites tuiles : on dessine une
+//     tuile pour chaque cellule NON grattée. Les cellules grattées (Set `touchees`)
+//     ne sont pas dessinées → l'emoji apparaît dessous, comme un vrai ticket.
 //
 // Props :
 //   symboleEmoji (string)  emoji à révéler
-//   chemin       (string)  attribut "d" du tracé gratté (coords locales à la case)
-//   revele       (bool)    case révélée (couche argent retirée + pop)
-//   id           (string)  id UNIQUE du masque SVG ('m-0', 'm-1', 'm-2')
+//   touchees     (Set)     indices de cellules grattées (grille N×N)
+//   revele       (bool)    case révélée (plus d'argent + pop)
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import Svg, { Defs, Mask, Rect, Path } from 'react-native-svg';
+import Svg, { Rect } from 'react-native-svg';
 import Animated, { useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
 
-// Épaisseur du trait de grattage (fraction de la largeur de la case).
-const FRACTION_TRAIT = 0.24;
+const N = 8; // grille 8×8 (doit correspondre à TicketGratter)
 
-export default function CaseGratter({ symboleEmoji, chemin = '', revele = false, id = 'm-case' }) {
+export default function CaseGratter({ symboleEmoji, touchees, revele = false }) {
   const [dim, setDim] = useState({ w: 1, h: 1 });
   const echelle = useSharedValue(1);
   const dejaPop = useRef(false);
@@ -39,7 +37,21 @@ export default function CaseGratter({ symboleEmoji, chemin = '', revele = false,
   }, [revele]);
 
   const styleEmoji = useAnimatedStyle(() => ({ transform: [{ scale: echelle.value }] }));
-  const epaisseur = Math.max(22, dim.w * FRACTION_TRAIT);
+
+  // Tuiles argentées : une par cellule encore NON grattée.
+  const cellW = dim.w / N;
+  const cellH = dim.h / N;
+  const tuiles = [];
+  if (!revele) {
+    for (let idx = 0; idx < N * N; idx++) {
+      if (touchees && touchees.has(idx)) continue;
+      const c = idx % N;
+      const r = Math.floor(idx / N);
+      tuiles.push(
+        <Rect key={idx} x={c * cellW} y={r * cellH} width={cellW + 0.6} height={cellH + 0.6} fill="#cfcfd8" />
+      );
+    }
+  }
 
   return (
     <View
@@ -52,19 +64,10 @@ export default function CaseGratter({ symboleEmoji, chemin = '', revele = false,
         <Text style={[styles.emojiTexte, { fontSize: Math.min(dim.w, dim.h) * 0.52 }]}>{symboleEmoji}</Text>
       </Animated.View>
 
-      {/* Couche argent + masque creusé par le grattage (retirée une fois révélée) */}
+      {/* Couche argent en tuiles (sans masque) */}
       {!revele && (
         <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Defs>
-            <Mask id={id}>
-              <Rect x="0" y="0" width="100%" height="100%" fill="white" />
-              {chemin ? (
-                <Path d={chemin} stroke="black" strokeWidth={epaisseur} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              ) : null}
-            </Mask>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height="100%" fill="#cfcfd8" mask={`url(#${id})`} />
-          <Rect x="0" y="0" width="42%" height="100%" fill="rgba(255,255,255,0.28)" mask={`url(#${id})`} />
+          {tuiles}
         </Svg>
       )}
     </View>
