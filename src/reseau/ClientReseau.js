@@ -121,6 +121,11 @@ export async function connecter(adresse = ADRESSE_SERVEUR) {
         case 'SCORES': emettre('scores', msg.scores); break;
         case 'TOUR_FINI': emettre('tourFini', msg); break;
         case 'PARTIE_FINIE': emettre('partieFinie', msg.classement); break;
+        // Événements du mini-jeu « Turbo Jackpot »
+        case 'COURSE_DEMARRE': emettre('courseDemarre', msg); break;
+        case 'ETAT_COURSE': emettre('etatCourse', msg); break;
+        case 'FEED': emettre('feed', msg); break;
+        case 'COURSE_FINIE': emettre('courseFinie', msg.classement); break;
       }
     };
   });
@@ -146,3 +151,6 @@ export function annulerTrait() { envoyer('ANNULER'); }
 export function effacerTout() { envoyer('EFFACER_TOUT'); }
 export function changerFond(couleur) { envoyer('FOND', { couleur }); }
 export function deviner(texte) { envoyer('DEVINER', { texte }); }
+
+// Fonctions de jeu « Turbo Jackpot »
+export function ticketTermine(symboles) { envoyer('TICKET_TERMINE', { symboles }); }
