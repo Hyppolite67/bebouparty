@@ -21,9 +21,17 @@ export function monId() { return _monId; }
 // au moment où la liste arrive. En la rejouant aux nouveaux abonnés, on évite
 // que la liste de joueurs reste vide (condition de course).
 let derniereListeJoueurs = null;
+// Idem pour Turbo Jackpot : le serveur envoie COURSE_DEMARRE / ETAT_COURSE pendant
+// qu'on change d'écran. On mémorise le dernier état et on le rejoue aux nouveaux
+// abonnés pour que l'écran de course ne reste pas vide (condition de course).
+let dernierCourseDemarre = null;
+let dernierEtatCourse = null;
 
 function emettre(evenement, donnees) {
   if (evenement === 'listeJoueurs') derniereListeJoueurs = donnees;
+  if (evenement === 'courseDemarre') dernierCourseDemarre = donnees;
+  if (evenement === 'etatCourse') dernierEtatCourse = donnees;
+  if (evenement === 'courseFinie') { dernierCourseDemarre = null; dernierEtatCourse = null; }
   (abonnes[evenement] || []).forEach((cb) => cb(donnees));
 }
 
@@ -34,6 +42,8 @@ export function sur(evenement, callback) {
   // On rejoue tout de suite la dernière liste connue au nouvel abonné, pour
   // qu'il ne rate pas une liste arrivée pendant la transition d'écran.
   if (evenement === 'listeJoueurs' && derniereListeJoueurs !== null) callback(derniereListeJoueurs);
+  if (evenement === 'courseDemarre' && dernierCourseDemarre !== null) callback(dernierCourseDemarre);
+  if (evenement === 'etatCourse' && dernierEtatCourse !== null) callback(dernierEtatCourse);
   return () => { abonnes[evenement] = abonnes[evenement].filter((c) => c !== callback); };
 }
 
@@ -60,6 +70,8 @@ export const ADRESSE_SERVEUR = 'bebouparty.onrender.com';
 export async function connecter(adresse = ADRESSE_SERVEUR) {
   // Nouvelle session : on oublie la liste de joueurs et l'identifiant précédents.
   derniereListeJoueurs = null;
+  dernierCourseDemarre = null;
+  dernierEtatCourse = null;
   _monId = null;
 
   const urlWs = construireUrl(adresse);

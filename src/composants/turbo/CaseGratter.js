@@ -178,7 +178,9 @@ export default function CaseGratter({ symboleEmoji, revele = false, onRevele, id
 
 const styles = StyleSheet.create({
   case: {
-    flex: 1,
+    // La largeur vient du parent (caseWrap flex:1) ; la hauteur en découle via aspectRatio.
+    // (NE PAS mettre flex:1 ici : dans une colonne à hauteur auto, ça réduit la case à 0.)
+    width: '100%',
     aspectRatio: 0.74,
     borderRadius: 16,
     overflow: 'hidden',

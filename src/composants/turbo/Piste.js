@@ -230,6 +230,7 @@ const TAILLE_MASCOTTE = 28;
 const styles = StyleSheet.create({
   // Conteneur principal
   piste: {
+    flex: 1,                       // remplit la zone haute (sinon la piste se réduit à rien)
     backgroundColor: '#160a28',
     borderRadius: 22,
     borderWidth: 2,
@@ -238,7 +239,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     overflow: 'hidden',
     position: 'relative',
-    // Hauteur auto selon le nombre de joueurs (via flex)
   },
 
   // Ligne d'arrivée à damier
@@ -271,11 +271,14 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
 
-  // Kart (positionné en absolu dans la lane)
+  // Kart (positionné en absolu dans la lane, centré verticalement)
   kart: {
     position: 'absolute',
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
     alignItems: 'center',
-    // On soustrait la moitié de la largeur pour centrer (approximatif)
+    // On décale d'un demi-kart pour centrer sur la position
     marginLeft: -14,
   },
 

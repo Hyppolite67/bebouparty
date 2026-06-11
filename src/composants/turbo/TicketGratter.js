@@ -90,6 +90,7 @@ export default function TicketGratter({ numero = 1, onTicketComplet }) {
 
 const styles = StyleSheet.create({
   ticket: {
+    flex: 1,                       // remplit la zone basse
     // Fond violet foncé avec texture pointillée (simulée par backgroundColor + opacité).
     backgroundColor: '#241048',
     borderRadius: 22,
@@ -137,10 +138,11 @@ const styles = StyleSheet.create({
   },
 
   cases: {
+    flex: 1,                       // occupe l'espace sous l'en-tête
     flexDirection: 'row',
     gap: 14,
     justifyContent: 'center',
-    alignItems: 'flex-end',
+    alignItems: 'center',          // cases centrées verticalement dans le ticket
     paddingHorizontal: 2,
     paddingVertical: 6,
   },
