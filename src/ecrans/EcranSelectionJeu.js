@@ -5,13 +5,15 @@ import FondDegrade from '../composants/FondDegrade';
 import CarteMiniJeu from '../composants/CarteMiniJeu';
 import BandeauErreur from '../composants/BandeauErreur';
 import * as Reseau from '../reseau/ClientReseau';
+import { chargerPersonnes, combosJouables } from '../donnees/personnes';
 import { COULEURS } from '../theme/couleurs';
 import { POLICES } from '../theme/styles';
 
 const JEUX = [
-  { id: 'dessin', nom: 'Devine le dessin', icone: '🖌️', couleur: COULEURS.violet, description: 'Dessine, les autres devinent !', verrouille: false },
-  { id: 'turbo',  nom: 'Turbo Jackpot',    icone: '🏎️', couleur: '#FF9F45',        description: 'Gratte et fonce !',             verrouille: false },
-  ...[...Array(6)].map((_, i) => ({ id: 'verrou' + i, verrouille: true })),
+  { id: 'dessin',   nom: 'Devine le dessin', icone: '🖌️', couleur: COULEURS.violet, description: 'Dessine, les autres devinent !', verrouille: false },
+  { id: 'turbo',    nom: 'Turbo Jackpot',    icone: '🏎️', couleur: '#FF9F45',        description: 'Gratte et fonce !',             verrouille: false },
+  { id: 'beboudle', nom: 'Beboudle',         icone: '❓', couleur: COULEURS.rose,     description: "T'as reconnu qui ?",            verrouille: false },
+  ...[...Array(5)].map((_, i) => ({ id: 'verrou' + i, verrouille: true })),
 ];
 
 export default function EcranSelectionJeu({ navigation }) {
@@ -22,7 +24,8 @@ export default function EcranSelectionJeu({ navigation }) {
     // ReglagesPartie et dont le jeuChoisi rebondit ici).
     const off1 = Reseau.sur('jeuChoisi', (idJeu) => {
       if (!navigation.isFocused()) return;
-      navigation.replace(idJeu === 'turbo' ? 'TurboJackpot' : 'JeuDessin');
+      const ecran = idJeu === 'turbo' ? 'TurboJackpot' : idJeu === 'beboudle' ? 'Beboudle' : 'JeuDessin';
+      navigation.replace(ecran);
     });
     // Si quelque chose ferme la salle, on revient à l'accueil avec un message.
     const off2 = Reseau.sur('erreur', (e) => {
@@ -35,9 +38,16 @@ export default function EcranSelectionJeu({ navigation }) {
   // Pour « Devine le dessin », l'hôte passe par l'écran de réglages.
   // Pour « Turbo Jackpot », on choisit directement (pas de réglages).
   // Les joueurs non-hôtes sont redirigés par l'abonnement jeuChoisi ci-dessus.
-  const choisir = (jeu) => {
+  const choisir = async (jeu) => {
     if (jeu.id === 'turbo') {
       Reseau.choisirJeu('turbo');
+    } else if (jeu.id === 'beboudle') {
+      const personnes = await chargerPersonnes();
+      if (combosJouables(personnes) === 0) {
+        Alert.alert('Beboudle', "Ajoute au moins un combo d'emojis dans le mode créateur (code 7285) avant de jouer.");
+        return;
+      }
+      Reseau.choisirBeboudle(personnes, 10);
     } else {
       navigation.navigate('ReglagesPartie');
     }

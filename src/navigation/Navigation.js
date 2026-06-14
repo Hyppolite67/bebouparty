@@ -10,6 +10,8 @@ import EcranAttenteJeu from '../ecrans/EcranAttenteJeu';
 import EcranJeuDessin from '../ecrans/EcranJeuDessin';
 import EcranReglagesPartie from '../ecrans/ReglagesPartie';
 import EcranTurboJackpot from '../ecrans/EcranTurboJackpot';
+import EcranBeboudle from '../ecrans/EcranBeboudle';
+import EcranCreateur from '../ecrans/EcranCreateur';
 import EcranPodium from '../ecrans/EcranPodium';
 
 const Pile = createNativeStackNavigator();
@@ -26,6 +28,8 @@ export default function Navigation() {
         <Pile.Screen name="ReglagesPartie" component={EcranReglagesPartie} />
         <Pile.Screen name="JeuDessin" component={EcranJeuDessin} />
         <Pile.Screen name="TurboJackpot" component={EcranTurboJackpot} />
+        <Pile.Screen name="Beboudle" component={EcranBeboudle} />
+        <Pile.Screen name="Createur" component={EcranCreateur} />
         <Pile.Screen name="Podium" component={EcranPodium} />
       </Pile.Navigator>
     </NavigationContainer>
