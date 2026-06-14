@@ -7,6 +7,12 @@ const { WebSocketServer } = require('ws');
 const { GestionnaireSalles } = require('./salles');
 const { Partie } = require('./partie');
 const { CourseTurbo } = require('./turbo');
+const { Beboudle } = require('./beboudle');
+
+// Constantes de timing du mini-jeu « Beboudle »
+const BEBOUDLE_INTERVALLE = 15000; // ms entre chaque indice
+const BEBOUDLE_GRACE = 15000;      // ms après le 4e indice avant clôture
+const BEBOUDLE_PAUSE = 6000;       // ms d'écran scores entre manches
 
 // L'hébergeur cloud fournit le port à utiliser ; sinon on prend 8080 en local.
 const PORT = process.env.PORT || 8080;
@@ -135,6 +141,59 @@ function finirCourse(code) {
   delete parties[code];
 }
 
+// ── Gestion du déroulement de Beboudle ──────────────────────────────────────
+
+// Démarre la manche suivante : diffuse les choix, révèle l'indice 1, arme les timers.
+function demarrerMancheBeboudle(code) {
+  const slot = parties[code];
+  if (!slot || slot.idJeu !== 'beboudle') return;
+  const m = slot.jeu.demarrerManche();
+  if (!m) return finirBeboudle(code);
+
+  diffuser(code, 'BEBOUDLE_MANCHE', { manche: m.manche, total: m.total, choix: m.choix });
+  // Indice 1 tout de suite
+  diffuser(code, 'REVELER_INDICE', { indice: 1, emoji: slot.jeu.emoji(0) });
+
+  // Indices 2,3,4 toutes les 15 s, puis clôture après un délai de grâce.
+  slot.timers = [];
+  for (let k = 2; k <= 4; k++) {
+    slot.timers.push(setTimeout(() => {
+      const r = slot.jeu.revelerProchain();
+      if (r) diffuser(code, 'REVELER_INDICE', r);
+    }, BEBOUDLE_INTERVALLE * (k - 1)));
+  }
+  slot.timers.push(setTimeout(() => finirMancheBeboudle(code),
+    BEBOUDLE_INTERVALLE * 3 + BEBOUDLE_GRACE));
+}
+
+function nettoyerTimersBeboudle(slot) {
+  (slot.timers || []).forEach(clearTimeout);
+  slot.timers = [];
+}
+
+// Clôture la manche : révèle la bonne réponse + scores, puis enchaîne (ou podium).
+function finirMancheBeboudle(code) {
+  const slot = parties[code];
+  if (!slot || slot.idJeu !== 'beboudle' || slot.mancheClose) return;
+  slot.mancheClose = true;
+  nettoyerTimersBeboudle(slot);
+  const res = slot.jeu.finirManche();
+  diffuser(code, 'BEBOUDLE_MANCHE_FINIE', res);
+  setTimeout(() => {
+    if (!parties[code]) return;
+    slot.mancheClose = false;
+    demarrerMancheBeboudle(code); // demarrerManche renverra null à la fin → finirBeboudle
+  }, BEBOUDLE_PAUSE);
+}
+
+function finirBeboudle(code) {
+  const slot = parties[code];
+  if (!slot) return;
+  nettoyerTimersBeboudle(slot);
+  diffuser(code, 'BEBOUDLE_FINIE', { classement: slot.jeu.classement() });
+  delete parties[code];
+}
+
 // ── Gestion des connexions WebSocket ─────────────────────────────────────────
 
 wss.on('connection', (ws) => {
@@ -172,7 +231,14 @@ wss.on('connection', (ws) => {
       if (!gestion.estHote(ws.idSocket)) return;
       const joueurs = gestion.listeJoueurs(code);
 
-      if (msg.idJeu === 'turbo') {
+      if (msg.idJeu === 'beboudle') {
+        // ── Beboudle ──
+        const personnes = msg.personnes || [];
+        const jeu = new Beboudle(joueurs, { personnes, manches: msg.manches || 10 });
+        parties[code] = { idJeu: 'beboudle', jeu, timers: [], mancheClose: false };
+        diffuser(code, 'JEU_CHOISI', { idJeu: 'beboudle' });
+        demarrerMancheBeboudle(code);
+      } else if (msg.idJeu === 'turbo') {
         // ── Course Turbo Jackpot ──
         const jeu = new CourseTurbo(joueurs, { duree: 60 });
         parties[code] = {
@@ -259,6 +325,16 @@ wss.on('connection', (ws) => {
       if (r.feed) diffuser(code, 'FEED', r.feed);
       // Vérifier si la course est terminée (temps écoulé OU un kart à l'arrivée)
       if (slot.jeu.estFinie(msEcoule)) finirCourse(code);
+    }
+
+    // Un joueur répond à une manche de Beboudle
+    else if (msg.type === 'REPONDRE') {
+      const slot = parties[code];
+      if (!slot || slot.idJeu !== 'beboudle') return; // garde-fou : beboudle uniquement
+      const r = slot.jeu.repondre(ws.idSocket, msg.personneId);
+      if (!r.ok) return;
+      diffuser(code, 'A_REPONDU', { pseudo: pseudoDe(code, ws.idSocket) });
+      if (slot.jeu.tousOntRepondu()) finirMancheBeboudle(code);
     }
   });
 
