@@ -35,7 +35,7 @@ export default function BoutonPersonne({ nom, etat = 'normal', gain, onPress, di
         {gain != null && etat === 'bon' && <Text style={styles.gain}>+{gain} pts</Text>}
         {etat === 'bon' && <Text style={styles.badge}>✅</Text>}
         {etat === 'mauvais' && <Text style={styles.badge}>❌</Text>}
-        <Text style={styles.nom} numberOfLines={1} adjustsFontSizeToFit>{nom}</Text>
+        <Text style={styles.nom} numberOfLines={2}>{nom}</Text>
       </Pressable>
     </Animated.View>
   );
@@ -45,8 +45,9 @@ const styles = StyleSheet.create({
   wrap: { flex: 1 },
   btn: {
     flex: 1,
+    minHeight: 64,
     borderRadius: 20,
-    paddingVertical: 18,
+    paddingVertical: 16,
     paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',

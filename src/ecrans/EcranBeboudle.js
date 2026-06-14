@@ -5,7 +5,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown, FadeOut, useSharedValue, useAnimatedStyle, withSequence, withTiming,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import * as Reseau from '../reseau/ClientReseau';
 import { DEGRADE_FOND, COULEURS } from '../theme/couleurs';
 import { POLICES } from '../theme/styles';
@@ -15,6 +18,21 @@ import TimerIndice from '../composants/beboudle/TimerIndice';
 import ScoresManche from '../composants/beboudle/ScoresManche';
 
 const POINTS_PAR_INDICE = { 1: 500, 2: 300, 3: 150, 4: 50 };
+
+// Compte à rebours « 3 · 2 · 1 · GO » au lancement (comme la course Turbo).
+function CompteARebours({ valeur }) {
+  const s = useSharedValue(0);
+  useEffect(() => {
+    s.value = 0;
+    s.value = withSequence(withTiming(1.35, { duration: 180 }), withTiming(1, { duration: 130 }));
+  }, [valeur]);
+  const st = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
+  return (
+    <View style={styles.compteOverlay} pointerEvents="none">
+      <Animated.Text style={[styles.compteTexte, st]}>{valeur}</Animated.Text>
+    </View>
+  );
+}
 
 export default function EcranBeboudle({ navigation }) {
   const monId = Reseau.monId();
@@ -28,8 +46,19 @@ export default function EcranBeboudle({ navigation }) {
   const [feedback, setFeedback] = useState(null);         // texte du toast
   const [finManche, setFinManche] = useState(null);       // { bonneReponse, reponses, scores }
   const [monScore, setMonScore] = useState(0);
+  const [compte, setCompte] = useState(null);             // 3 · 2 · 1 · GO au lancement
 
   const toastTimer = useRef(null);
+  const premiereManche = useRef(true);
+
+  function lancerCompteARebours() {
+    const etapes = [3, 2, 1, 'GO'];
+    etapes.forEach((v, i) => setTimeout(() => {
+      setCompte(v);
+      Haptics.impactAsync(v === 'GO' ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+    }, i * 600));
+    setTimeout(() => setCompte(null), etapes.length * 600);
+  }
   const indiceActuel = emojisReveles.filter((e) => e !== null).length; // 1..4
 
   function montrerToast(texte) {
@@ -45,6 +74,8 @@ export default function EcranBeboudle({ navigation }) {
       setManche(m); setTotal(t); setChoix(c);
       setEmojisReveles([null, null, null, null]);
       setMaReponse(null); setFinManche(null);
+      // Compte à rebours « 3 · 2 · 1 · GO » au tout début de la partie.
+      if (premiereManche.current) { premiereManche.current = false; lancerCompteARebours(); }
     }));
 
     offs.push(Reseau.sur('revelerIndice', ({ indice, emoji }) => {
@@ -163,6 +194,9 @@ export default function EcranBeboudle({ navigation }) {
           monId={monId}
         />
       )}
+
+      {/* Compte à rebours « 3 · 2 · 1 · GO » */}
+      {compte !== null && <CompteARebours valeur={compte} />}
     </LinearGradient>
   );
 }
@@ -201,4 +235,20 @@ const styles = StyleSheet.create({
 
   grille: { gap: 12, marginTop: 'auto', marginBottom: 'auto' },
   rangee: { flexDirection: 'row', gap: 12 },
+
+  compteOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,10,34,0.55)',
+    zIndex: 60,
+  },
+  compteTexte: {
+    fontFamily: POLICES.titre,
+    fontSize: 110,
+    color: COULEURS.jaune,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 12,
+  },
 });
