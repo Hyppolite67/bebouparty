@@ -26,12 +26,20 @@ let derniereListeJoueurs = null;
 // abonnés pour que l'écran de course ne reste pas vide (condition de course).
 let dernierCourseDemarre = null;
 let dernierEtatCourse = null;
+// Idem pour Beboudle : la manche et les indices peuvent arriver avant le montage
+// de l'écran de jeu. On mémorise pour les rejouer aux nouveaux abonnés.
+let dernierBeboudleManche = null; // dernière BEBOUDLE_MANCHE reçue
+let indicesBeboudle = [];         // indices révélés de la manche courante
 
 function emettre(evenement, donnees) {
   if (evenement === 'listeJoueurs') derniereListeJoueurs = donnees;
   if (evenement === 'courseDemarre') dernierCourseDemarre = donnees;
   if (evenement === 'etatCourse') dernierEtatCourse = donnees;
   if (evenement === 'courseFinie') { dernierCourseDemarre = null; dernierEtatCourse = null; }
+  if (evenement === 'beboudleManche') { dernierBeboudleManche = donnees; indicesBeboudle = []; }
+  if (evenement === 'revelerIndice') indicesBeboudle.push(donnees);
+  if (evenement === 'beboudleMancheFinie') indicesBeboudle = [];
+  if (evenement === 'beboudleFinie') { dernierBeboudleManche = null; indicesBeboudle = []; }
   (abonnes[evenement] || []).forEach((cb) => cb(donnees));
 }
 
@@ -44,6 +52,8 @@ export function sur(evenement, callback) {
   if (evenement === 'listeJoueurs' && derniereListeJoueurs !== null) callback(derniereListeJoueurs);
   if (evenement === 'courseDemarre' && dernierCourseDemarre !== null) callback(dernierCourseDemarre);
   if (evenement === 'etatCourse' && dernierEtatCourse !== null) callback(dernierEtatCourse);
+  if (evenement === 'beboudleManche' && dernierBeboudleManche !== null) callback(dernierBeboudleManche);
+  if (evenement === 'revelerIndice') indicesBeboudle.forEach((d) => callback(d));
   return () => { abonnes[evenement] = abonnes[evenement].filter((c) => c !== callback); };
 }
 
@@ -72,6 +82,8 @@ export async function connecter(adresse = ADRESSE_SERVEUR) {
   derniereListeJoueurs = null;
   dernierCourseDemarre = null;
   dernierEtatCourse = null;
+  dernierBeboudleManche = null;
+  indicesBeboudle = [];
   _monId = null;
 
   const urlWs = construireUrl(adresse);
@@ -138,6 +150,12 @@ export async function connecter(adresse = ADRESSE_SERVEUR) {
         case 'ETAT_COURSE': emettre('etatCourse', msg); break;
         case 'FEED': emettre('feed', msg); break;
         case 'COURSE_FINIE': emettre('courseFinie', msg.classement); break;
+        // Événements du mini-jeu « Beboudle »
+        case 'BEBOUDLE_MANCHE': emettre('beboudleManche', msg); break;
+        case 'REVELER_INDICE': emettre('revelerIndice', msg); break;
+        case 'A_REPONDU': emettre('aRepondu', msg); break;
+        case 'BEBOUDLE_MANCHE_FINIE': emettre('beboudleMancheFinie', msg); break;
+        case 'BEBOUDLE_FINIE': emettre('beboudleFinie', msg.classement); break;
       }
     };
   });
@@ -166,3 +184,11 @@ export function deviner(texte) { envoyer('DEVINER', { texte }); }
 
 // Fonctions de jeu « Turbo Jackpot »
 export function ticketTermine(symboles) { envoyer('TICKET_TERMINE', { symboles }); }
+
+// Fonctions de jeu « Beboudle »
+// Note : on n'utilise PAS choisirJeu (qui enveloppe dans `reglages` pour le dessin) ;
+// le serveur lit `personnes`/`manches` au premier niveau pour Beboudle.
+export function choisirBeboudle(personnes, manches = 10) {
+  envoyer('CHOISIR_JEU', { idJeu: 'beboudle', personnes, manches });
+}
+export function repondre(personneId) { envoyer('REPONDRE', { personneId }); }
