@@ -15,6 +15,13 @@ const abonnes = {}; // evenement -> [callbacks]
 let _monId = null;
 export function monId() { return _monId; }
 
+// On retient si JE suis l'hôte et le code de MA salle, pour pouvoir revenir au
+// lobby depuis n'importe quel écran (ex. le podium) sans recréer de salle.
+let _estHote = false;
+let _codeSalle = null;
+export function estHote() { return _estHote; }
+export function codeSalle() { return _codeSalle; }
+
 // On mémorise la DERNIÈRE liste de joueurs reçue. Pourquoi ? Le serveur envoie
 // la liste juste après qu'on crée/rejoint une salle, c'est-à-dire pendant qu'on
 // change d'écran. L'écran "Salle d'attente" peut donc ne pas encore être abonné
@@ -85,6 +92,8 @@ export async function connecter(adresse = ADRESSE_SERVEUR) {
   dernierBeboudleManche = null;
   indicesBeboudle = [];
   _monId = null;
+  _estHote = false;
+  _codeSalle = null;
 
   const urlWs = construireUrl(adresse);
   // URL HTTP(S) équivalente, pour réveiller le serveur (ws->http, wss->https).
@@ -124,7 +133,8 @@ export async function connecter(adresse = ADRESSE_SERVEUR) {
       // On traduit chaque message serveur en événement clair pour les écrans
       switch (msg.type) {
         case 'MON_ID': _monId = msg.id; emettre('monId', msg.id); break;
-        case 'SALLE_CREEE': emettre('salleCreee', msg); break;
+        case 'SALLE_CREEE': _codeSalle = msg.code; emettre('salleCreee', msg); break;
+        case 'RETOUR_LOBBY': emettre('retourLobby'); break;
         case 'LISTE_JOUEURS': emettre('listeJoueurs', msg.joueurs); break;
         case 'PARTIE_LANCEE': emettre('partieLancee'); break;
         case 'JEU_CHOISI': emettre('jeuChoisi', msg.idJeu); break;
@@ -165,9 +175,11 @@ function envoyer(type, donnees) {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(construire(type, donnees));
 }
 
-export function creerSalle(profil) { envoyer('CREER_SALLE', { profil }); }
-export function rejoindreSalle(code, profil) { envoyer('REJOINDRE_SALLE', { code, profil }); }
+export function creerSalle(profil) { _estHote = true; envoyer('CREER_SALLE', { profil }); }
+export function rejoindreSalle(code, profil) { _estHote = false; _codeSalle = code; envoyer('REJOINDRE_SALLE', { code, profil }); }
 export function lancerPartie() { envoyer('LANCER_PARTIE'); }
+// Renvoie toute la salle au lobby (salle d'attente) sans la recréer.
+export function retourLobby() { envoyer('RETOUR_LOBBY'); }
 // reglages : { manches, duree } — transmis au serveur pour configurer la partie
 export function choisirJeu(idJeu, reglages) { envoyer('CHOISIR_JEU', { idJeu, reglages }); }
 export function quitter() { if (socket) socket.close(); socket = null; derniereListeJoueurs = null; }

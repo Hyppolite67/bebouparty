@@ -226,6 +226,20 @@ wss.on('connection', (ws) => {
       if (gestion.estHote(ws.idSocket)) diffuser(code, 'PARTIE_LANCEE');
     }
 
+    // Retour au lobby (salle d'attente) après un mini-jeu, SANS recréer la salle.
+    // N'importe quel joueur peut renvoyer le groupe au lobby ; le leader y relancera un jeu.
+    else if (msg.type === 'RETOUR_LOBBY') {
+      // Nettoie un éventuel jeu encore en cours (timers compris).
+      const slot = parties[code];
+      if (slot) {
+        if (slot.minuteur) clearTimeout(slot.minuteur);
+        if (slot.timers) slot.timers.forEach(clearTimeout);
+        delete parties[code];
+      }
+      diffuser(code, 'RETOUR_LOBBY');
+      diffuserListe(code); // liste de joueurs à jour pour la salle d'attente
+    }
+
     // L'hôte choisit le jeu et ses réglages → créer la partie, naviguer, puis démarrer le jeu
     else if (msg.type === 'CHOISIR_JEU') {
       if (!gestion.estHote(ws.idSocket)) return;

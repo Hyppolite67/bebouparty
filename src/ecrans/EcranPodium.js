@@ -2,7 +2,7 @@
 // Écran de classement final après la partie.
 // Reçoit `route.params.classement` : [{ id, pseudo, mascotte?, points }] (déjà trié côté serveur).
 // Top 3 mis en avant avec médailles, puis le reste.
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import FondDegrade from '../composants/FondDegrade';
 import Mascotte from '../composants/Mascotte';
@@ -60,6 +60,20 @@ export default function EcranPodium({ route, navigation }) {
   const top3 = classement.slice(0, 3);
   const reste = classement.slice(3);
 
+  // Quand le serveur renvoie la salle au lobby, tout le monde retourne en
+  // salle d'attente (sans recréer de salle). Le leader pourra relancer un jeu.
+  useEffect(() => {
+    const off1 = Reseau.sur('retourLobby', () => {
+      navigation.replace('SalleAttente', { estHote: Reseau.estHote(), code: Reseau.codeSalle() });
+    });
+    const off2 = Reseau.sur('deconnecte', () => navigation.replace('Accueil'));
+    return () => { off1(); off2(); };
+  }, []);
+
+  // Gros bouton : renvoie TOUT le groupe au lobby (diffusé par le serveur).
+  const retourLobby = () => Reseau.retourLobby();
+
+  // Bouton secondaire : quitter complètement la salle et revenir à l'accueil.
   const retourAccueil = () => {
     Reseau.quitter();
     navigation.popToTop();
@@ -114,13 +128,19 @@ export default function EcranPodium({ route, navigation }) {
           )}
         </ScrollView>
 
-        {/* Bouton retour */}
+        {/* Bouton principal : retour au lobby pour rejouer un autre mini-jeu */}
         <TouchableOpacity
-          onPress={retourAccueil}
-          style={[styles.boutonRetour, ombreColoree(COULEURS.violet)]}
-          activeOpacity={0.82}
+          onPress={retourLobby}
+          style={[styles.boutonLobby, ombreColoree(COULEURS.rose)]}
+          activeOpacity={0.85}
         >
-          <Text style={styles.texteRetour}>🏠 Retour à l'accueil</Text>
+          <Text style={styles.texteLobby}>🔄 Retour au lobby</Text>
+          <Text style={styles.sousTexteLobby}>Choisir un autre mini-jeu</Text>
+        </TouchableOpacity>
+
+        {/* Bouton secondaire : quitter la salle */}
+        <TouchableOpacity onPress={retourAccueil} style={styles.boutonQuitter} activeOpacity={0.7}>
+          <Text style={styles.texteQuitter}>🏠 Quitter la salle</Text>
         </TouchableOpacity>
       </View>
     </FondDegrade>
@@ -252,17 +272,34 @@ const styles = StyleSheet.create({
     marginTop: 32,
   },
 
-  // Bouton retour
-  boutonRetour: {
-    backgroundColor: COULEURS.violet,
+  // Bouton principal : retour au lobby (grand, mis en avant)
+  boutonLobby: {
+    backgroundColor: COULEURS.rose,
     borderRadius: RAYONS.bouton,
-    paddingVertical: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    gap: 2,
+  },
+  texteLobby: {
+    fontFamily: POLICES.titreMoyen,
+    fontSize: 22,
+    color: COULEURS.blanc,
+  },
+  sousTexteLobby: {
+    fontFamily: POLICES.texte,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  // Bouton secondaire : quitter la salle (discret)
+  boutonQuitter: {
+    paddingVertical: 12,
     alignItems: 'center',
     marginBottom: 4,
   },
-  texteRetour: {
-    fontFamily: POLICES.texteGras,
-    fontSize: 18,
-    color: COULEURS.blanc,
+  texteQuitter: {
+    fontFamily: POLICES.texte,
+    fontSize: 15,
+    color: COULEURS.texteDoux,
   },
 });
