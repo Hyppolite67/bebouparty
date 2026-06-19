@@ -12,10 +12,11 @@ import { POLICES } from '../theme/styles';
 export default function EcranAttenteJeu({ navigation }) {
   const { mascotte } = useJoueur();
   useEffect(() => {
-    // Routage selon le jeu choisi par l'hôte (idJeu = 'turbo' ou 'dessin')
-    const off1 = Reseau.sur('jeuChoisi', (idJeu) =>
-      navigation.replace(idJeu === 'turbo' ? 'TurboJackpot' : 'JeuDessin')
-    );
+    // Routage selon le jeu choisi par l'hôte (idJeu = 'turbo', 'beboudle' ou 'dessin')
+    const off1 = Reseau.sur('jeuChoisi', (idJeu) => {
+      const ecran = idJeu === 'turbo' ? 'TurboJackpot' : idJeu === 'beboudle' ? 'Beboudle' : 'JeuDessin';
+      navigation.replace(ecran);
+    });
     // Si l'hôte quitte avant de choisir, on ne reste pas bloqué ici.
     const off2 = Reseau.sur('erreur', (e) => {
       Alert.alert('Partie terminée', e?.message || 'L\'hôte a quitté la partie.');

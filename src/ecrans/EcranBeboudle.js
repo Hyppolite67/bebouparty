@@ -233,8 +233,8 @@ const styles = StyleSheet.create({
   toastDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#A855F7' },
   toastTxt: { fontFamily: POLICES.texteGras, fontSize: 13, color: COULEURS.blanc },
 
-  grille: { gap: 12, marginTop: 'auto', marginBottom: 'auto' },
-  rangee: { flexDirection: 'row', gap: 12 },
+  grille: { flex: 1, gap: 12, marginTop: 8 },
+  rangee: { flex: 1, flexDirection: 'row', gap: 12 },
 
   compteOverlay: {
     ...StyleSheet.absoluteFillObject,
